@@ -28,7 +28,9 @@ logger = logging.getLogger("update_macro")
 logger.setLevel(logging.INFO)
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 
-
+# ---------------------------------------------------------------------------
+# CLI Entry Point
+# ---------------------------------------------------------------------------
 def run(series: Sequence[str] | None, start: str | None, end: str | None) -> None:
     """Orchestrate pull -> preprocess -> upsert."""
     logger.info("Fetching FRED data…")

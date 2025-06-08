@@ -16,8 +16,7 @@ authors = [
 license = { text = "MIT" }
 requires-python = ">=3.12"
 
-# Core runtime dependencies ─ add/remove as the project evolves
-# Pin only major versions here; lockfiles belong in Poetry or requirements.txt
+# Core runtime dependencies
 dependencies = [
     "pandas>=1.5",
     "numpy>=1.24",
