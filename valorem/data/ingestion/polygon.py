@@ -32,6 +32,7 @@ pip install requests python-dotenv pandas tqdm
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+import shutil
 import logging
 import os
 from typing import Any, Dict, Generator, List
@@ -92,6 +93,29 @@ def _load_cache(endpoint: str, key: str) -> pd.DataFrame | None:
 def _save_cache(endpoint: str, key: str, df: pd.DataFrame) -> None:
     p = _cache_path(endpoint, key)
     df.to_csv(p)
+
+def clear_polygon_cache(endpoint: str | None = None) -> None:
+    """
+    Clear the on-disk Polygon cache.
+
+    Parameters
+    ----------
+    endpoint : str or None
+        If you pass one of ["aggregates","quotes","trades","l2","chain"],
+        only that sub-folder is removed and recreated. If None, the entire
+        polygon cache directory is wiped and recreated.
+    """
+    if endpoint:
+        sub = _CACHE_DIR / endpoint
+        if sub.exists():
+            shutil.rmtree(sub)
+        sub.mkdir(parents=True, exist_ok=True)
+        logger.info("Cleared Polygon cache for endpoint %r", endpoint)
+    else:
+        if _CACHE_DIR.exists():
+            shutil.rmtree(_CACHE_DIR)
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        logger.info("Cleared all Polygon cache")
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +214,7 @@ def fetch_aggregates(
 
 # ---------------------------------------------------------------------------
 # 2. Quotes v3 - NBBO quotes
+# NOTE: WE CURRENTLY DO NOT HAVE ACCESS TO THE QUOTES ENDPOINT IN OUR POLYGON PLAN.
 # ---------------------------------------------------------------------------
 
 def fetch_quotes(
@@ -222,7 +247,7 @@ def fetch_quotes(
         logger.debug("Quotes cache hit %s", cache_key)
         return hit
 
-    url   = f"{BASE_URL}/v3/quotes/{symbol}/{date_str}"
+    url   = f"{BASE_URL}/v3/quotes/{symbol}?sort={date_str}"
     rows  = list(tqdm(_paginate(_get_session(), url, {}), desc=f"quotes {date_str}"))
     if not rows:
         return pd.DataFrame()
@@ -273,7 +298,7 @@ def fetch_trades(
         logger.debug("Trades cache hit %s", cache_key)
         return hit
 
-    url  = f"{BASE_URL}/v3/trades/{symbol}/{date_str}"
+    url  = f"{BASE_URL}/v3/trades/{symbol}?timestamp={date_str}"
     rows = list(tqdm(_paginate(_get_session(), url, {}), desc=f"trades {date_str}"))
     if not rows:
         return pd.DataFrame()
@@ -332,43 +357,64 @@ def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.Da
 
 
 # ---------------------------------------------------------------------------
-# 5. Options chain snapshot with greeks
+# 5. Options chain snapshot
 # ---------------------------------------------------------------------------
 
-def fetch_option_chain_snapshot(*, underlying: str = "SPY", use_cache: bool = False) -> pd.DataFrame:
+def fetch_option_chain_snapshot(
+    *, 
+    underlying: str = "SPY", 
+    use_cache: bool = False
+) -> pd.DataFrame:
     """
     Fetch a full options chain snapshot with greeks.
 
     Parameters
     ----------
     underlying : str, default "SPY"
-        Underlying ticker symbol for the options chain.
     use_cache : bool, default False
-        Whether to load from / save to local CSV cache.
 
     Returns
     -------
     pd.DataFrame
-        Multi-row DataFrame indexed by UTC timestamp with all
-        option contracts and greek columns (delta, gamma, theta, vega, etc.).
+        Multi-row DataFrame indexed by UTC timestamp.
     """
     cache_key = f"{underlying}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
     if use_cache and (hit := _load_cache("chain", cache_key)) is not None:
         return hit
 
-    url  = f"{BASE_URL}/v3/snapshot/options/{underlying}?greeks=true"
-    chain = _get_session().get(url, timeout=60).json().get("results", [])
-    if not chain:
+    url     = f"{BASE_URL}/v3/snapshot/options/{underlying}"
+    results = _get_session().get(url, timeout=60).json().get("results", [])
+    if not results:
         return pd.DataFrame()
 
-    df = pd.json_normalize(chain)
-    df["timestamp"] = pd.to_datetime(df["last_quote.p_T"], unit="ms", utc=True)
+    df = pd.json_normalize(results)
+
+    # 1) Gather any candidate timestamp columns
+    candidates = [c for c in df.columns 
+                  if ("last_updated" in c) or ("sip_timestamp" in c)]
+    if not candidates:
+        raise KeyError(f"No timestamp-like column in options snapshot: cols={df.columns.tolist()}")
+
+    # 2) Define a priority order
+    for preferred in ["last_quote.last_updated", 
+                      "last_trade.sip_timestamp",
+                      "day.last_updated",
+                      "underlying_asset.last_updated"]:
+        if preferred in candidates:
+            ts_field = preferred
+            break
+    else:
+        # fallback to first match
+        ts_field = candidates[0]
+
+    # 3) Convert to datetime index
+    unit = "ns" if "sip_timestamp" in ts_field or "last_updated" in ts_field else "ms"
+    df["timestamp"] = pd.to_datetime(df[ts_field], unit=unit, utc=True)
     df = df.set_index("timestamp").sort_index()
 
     if use_cache:
         _save_cache("chain", cache_key, df)
     return df
-
 
 
 # ---------------------------------------------------------------------------

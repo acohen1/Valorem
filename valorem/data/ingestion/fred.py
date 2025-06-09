@@ -32,6 +32,7 @@ Dependencies
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+import shutil
 import logging
 import os
 
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # ---------------------------------------------------------------------------
-# Default macro dashboard — IDs → human-readable aliases
+# Default macro dashboard — IDs -> human-readable aliases
 # ---------------------------------------------------------------------------
 DEFAULT_SERIES: dict[str, str] = {
     "FEDFUNDS": "fed_funds_rate",
@@ -115,6 +116,29 @@ def _load_from_cache(series_id: str) -> pd.Series | None:
 def _save_to_cache(series_id: str, series: pd.Series) -> None:
     path = _series_cache_path(series_id)
     series.to_csv(path, header=True)
+
+def clear_fred_cache(series_id: str | None = None) -> None:
+    """
+    Clear the on‐disk FRED CSV cache.
+
+    Parameters
+    ----------
+    series_id : str or None
+        If given, removes the single file for that series (e.g. "FEDFUNDS").
+        If None, wipes the entire ~/.valorem_cache/fred directory.
+    """
+    if series_id:
+        path = _series_cache_path(series_id)
+        if path.exists():
+            path.unlink()
+            logger.info("Cleared FRED cache for series %r", series_id)
+        else:
+            logger.info("No cache file to clear for series %r", series_id)
+    else:
+        if _CACHE_DIR.exists():
+            shutil.rmtree(_CACHE_DIR)
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        logger.info("Cleared all FRED cache")
 
 
 # ---------------------------------------------------------------------------
