@@ -132,8 +132,34 @@ def fetch_aggregates(
     multiplier: int = 1,
     timespan: str = "second",
     limit: int = 50000,
-    use_cache: bool = True,          # NEW
+    use_cache: bool = True,
 ) -> pd.DataFrame:
+    """
+    Fetch OHLCV bars for a given time range.
+
+    Parameters
+    ----------
+    start : datetime
+        UTC start timestamp for the bar data.
+    end : datetime
+        UTC end timestamp for the bar data.
+    symbol : str, default "SPY"
+        Ticker symbol to retrieve bars for.
+    multiplier : int, default 1
+        Bar size multiplier (e.g. 1 for 1-minute bars).
+    timespan : str, default "second"
+        Timespan unit ("minute", "hour", etc.).
+    limit : int, default 50000
+        Maximum rows per API call.
+    use_cache : bool, default True
+        Whether to load from / save to local CSV cache.
+
+    Returns
+    -------
+    pd.DataFrame
+        Indexed by UTC timestamp with columns:
+        "open", "high", "low", "close", "volume", "vwap", "trades".
+    """
     cache_key = f"{symbol}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}"
     if use_cache and (cached := _load_cache("aggregates", cache_key)) is not None:
         logger.debug("Aggregates cache hit %s", cache_key)
@@ -170,25 +196,46 @@ def fetch_quotes(
     date: str | datetime,
     *,
     symbol: str = "SPY",
+    use_cache: bool = True,
 ) -> pd.DataFrame:
-    """Fetch all NBBO quotes for *date* (UTC)."""
-    date_str = pd.to_datetime(date).strftime("%Y-%m-%d")
-    url = f"{BASE_URL}/v3/quotes/{symbol}/{date_str}"
-    sess = _get_session()
+    """
+    Fetch tick-level NBBO quotes for a single date.
 
-    quotes: List[Dict[str, Any]] = []
-    for res in tqdm(_paginate(sess, url, {}), desc=f"quotes {date_str}"):
-        quotes.append(res)
-    if not quotes:
+    Parameters
+    ----------
+    date : str or datetime
+        Date string "YYYY-MM-DD" or datetime to fetch quotes for.
+    symbol : str, default "SPY"
+        Ticker symbol to retrieve quotes for.
+    use_cache : bool, default True
+        Whether to load from / save to local CSV cache.
+
+    Returns
+    -------
+    pd.DataFrame
+        Indexed by UTC timestamp with columns:
+        "bid", "ask", "bid_size", "ask_size", plus any raw Polygon fields.
+    """
+    date_str = pd.to_datetime(date).strftime("%Y-%m-%d")
+    cache_key = f"{symbol}_{date_str}"
+    if use_cache and (hit := _load_cache("quotes", cache_key)) is not None:
+        logger.debug("Quotes cache hit %s", cache_key)
+        return hit
+
+    url   = f"{BASE_URL}/v3/quotes/{symbol}/{date_str}"
+    rows  = list(tqdm(_paginate(_get_session(), url, {}), desc=f"quotes {date_str}"))
+    if not rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(quotes)
-    df["timestamp"] = pd.to_datetime(df["sip_timestamp"], unit="ns", utc=True)
-    df = (
-        df.set_index("timestamp")
-          .rename(columns={"bid_price": "bid", "ask_price": "ask", "bid_size": "bid_size", "ask_size": "ask_size"})
-          .sort_index()
-    )
+    df = (pd.DataFrame(rows)
+            .assign(timestamp=lambda d: pd.to_datetime(d["sip_timestamp"], unit="ns", utc=True))
+            .set_index("timestamp")
+            .rename(columns={"bid_price":"bid","ask_price":"ask",
+                             "bid_size":"bid_size","ask_size":"ask_size"})
+            .sort_index())
+
+    if use_cache:
+        _save_cache("quotes", cache_key, df)
     return df
 
 
@@ -200,8 +247,26 @@ def fetch_trades(
     date: str | datetime,
     *,
     symbol: str = "SPY",
-    use_cache: bool = True,           # NEW
+    use_cache: bool = True,
 ) -> pd.DataFrame:
+    """
+    Fetch tick-level trade prints for a single date.
+
+    Parameters
+    ----------
+    date : str or datetime
+        Date string "YYYY-MM-DD" or datetime to fetch trades for.
+    symbol : str, default "SPY"
+        Ticker symbol to retrieve trade prints for.
+    use_cache : bool, default True
+        Whether to load from / save to local CSV cache.
+
+    Returns
+    -------
+    pd.DataFrame
+        Indexed by UTC timestamp with columns:
+        "price", "size", "conditions", "trade_id", plus any raw Polygon fields.
+    """
     date_str  = pd.to_datetime(date).strftime("%Y-%m-%d")
     cache_key = f"{symbol}_{date_str}"
     if use_cache and (hit := _load_cache("trades", cache_key)) is not None:
@@ -230,6 +295,22 @@ def fetch_trades(
 # ---------------------------------------------------------------------------
 
 def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.DataFrame:
+    """
+    Fetch a single Level-2 order-book snapshot.
+
+    Parameters
+    ----------
+    symbol : str, default "SPY"
+        Ticker symbol to retrieve the L2 snapshot for.
+    use_cache : bool, default False
+        Whether to load from / save to local CSV cache.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-row DataFrame indexed by UTC timestamp with columns:
+        "bid_px_1", "bid_sz_1", …, "ask_px_5", "ask_sz_5".
+    """
     cache_key = f"{symbol}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
     if use_cache and (hit := _load_cache("l2", cache_key)) is not None:
         return hit
@@ -255,6 +336,22 @@ def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.Da
 # ---------------------------------------------------------------------------
 
 def fetch_option_chain_snapshot(*, underlying: str = "SPY", use_cache: bool = False) -> pd.DataFrame:
+    """
+    Fetch a full options chain snapshot with greeks.
+
+    Parameters
+    ----------
+    underlying : str, default "SPY"
+        Underlying ticker symbol for the options chain.
+    use_cache : bool, default False
+        Whether to load from / save to local CSV cache.
+
+    Returns
+    -------
+    pd.DataFrame
+        Multi-row DataFrame indexed by UTC timestamp with all
+        option contracts and greek columns (delta, gamma, theta, vega, etc.).
+    """
     cache_key = f"{underlying}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
     if use_cache and (hit := _load_cache("chain", cache_key)) is not None:
         return hit
