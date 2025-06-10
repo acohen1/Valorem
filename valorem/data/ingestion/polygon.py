@@ -1,21 +1,24 @@
 from __future__ import annotations
-
 """
 Polygon.io data ingestion utilities.
 
-This module centralizes all pulls from the Polygon API for SPY-centric market data
-and returns tidy pandas DataFrames ready for persistence in Valorem's feature store.
+This module centralizes all Polygon REST pulls for SPY-centric market data and
+returns tidy pandas DataFrames that can be written straight into Valorem's
+SQLite feature store.
 
 Key design points
 -----------------
-* Reads the POLYGON_API_KEY from `.env` (via python-dotenv).
-* Provides five public helpers:
-  - `fetch_aggregates` for 1-second OHLCV bars (Aggregates v3).
-  - `fetch_quotes`  for NBBO quote ticks (Quotes v3).
-  - `fetch_trades`  for trade prints (Trades v3).
-  - `fetch_option_chain_snapshot` for full option chain with greeks (Snapshot v3).
-* Handles cursor-based pagination automatically.
-* Returns DataFrames with a `DatetimeIndex` (UTC) and consistent column naming.
+* Reads *POLYGON_API_KEY* from `.env` (via *python-dotenv*).
+* Four public helpers:
+
+  - `fetch_aggregates`  → 1-minute OHLCV bars (Aggregates v3)  
+  - `fetch_trades`      → tick-level trade prints (Trades v3)  
+  - `fetch_quotes`      → NBBO quote ticks **(call only if plan permits)**  
+  - `fetch_option_chain_snapshot` → full option chain snapshot with greeks
+
+* Cursor-based pagination handled automatically.
+* Each helper returns a DataFrame with a UTC `DatetimeIndex` and consistent
+  column names ready for `upsert()`.
 
 Example
 -------
@@ -27,13 +30,9 @@ Dependencies
 ------------
 pip install requests python-dotenv pandas tqdm
 """
-
-from collections.abc import Iterable
-from datetime import datetime
-from pathlib import Path
-import shutil
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, Generator, List
 
 import pandas as pd
@@ -45,7 +44,6 @@ __all__ = [
     "fetch_aggregates",
     "fetch_quotes",
     "fetch_trades",
-    "fetch_l2_snapshots",
     "fetch_option_chain_snapshot",
 ]
 
@@ -53,401 +51,266 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 BASE_URL = "https://api.polygon.io"
-_CACHE_DIR = Path.home() / ".valorem_cache" / "polygon"
-_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # ---------------------------------------------------------------------------
-# Helper functions
+# 1.  Session helper
 # ---------------------------------------------------------------------------
-
 def _get_session() -> requests.Session:
     load_dotenv()
     key = os.getenv("POLYGON_API_KEY")
     if not key:
-        raise EnvironmentError("POLYGON_API_KEY missing - add it to your .env")
-
-    sess = requests.Session()
-    sess.params.update({"apiKey": key})
-    return sess
-
-def _cache_path(endpoint: str, key: str) -> Path:
-    """
-    Build a cache filename like:
-        ~/.valorem_cache/polygon/aggregates/SPY_2024-06-05_0930-1600.csv
-    """
-    sub = _CACHE_DIR / endpoint
-    sub.mkdir(exist_ok=True)
-    hashed = key.replace("/", "_")
-    return sub / f"{hashed}.csv"
-
-def _load_cache(endpoint: str, key: str) -> pd.DataFrame | None:
-    p = _cache_path(endpoint, key)
-    if p.exists() and p.stat().st_size:
-        try:
-            return pd.read_csv(p, index_col=0, parse_dates=True)
-        except Exception as exc:
-            logger.warning("Bad cache %s (%s) – rebuilding", p.name, exc)
-    return None
-
-def _save_cache(endpoint: str, key: str, df: pd.DataFrame) -> None:
-    p = _cache_path(endpoint, key)
-    df.to_csv(p)
-
-def clear_polygon_cache(endpoint: str | None = None) -> None:
-    """
-    Clear the on-disk Polygon cache.
-
-    Parameters
-    ----------
-    endpoint : str or None
-        If you pass one of ["aggregates","quotes","trades","l2","chain"],
-        only that sub-folder is removed and recreated. If None, the entire
-        polygon cache directory is wiped and recreated.
-    """
-    if endpoint:
-        sub = _CACHE_DIR / endpoint
-        if sub.exists():
-            shutil.rmtree(sub)
-        sub.mkdir(parents=True, exist_ok=True)
-        logger.info("Cleared Polygon cache for endpoint %r", endpoint)
-    else:
-        if _CACHE_DIR.exists():
-            shutil.rmtree(_CACHE_DIR)
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info("Cleared all Polygon cache")
+        raise EnvironmentError("POLYGON_API_KEY missing – add it to your .env")
+    s = requests.Session()
+    s.params.update({"apiKey": key})
+    return s
 
 
 # ---------------------------------------------------------------------------
-# Pagination helper (cursor-based endpoints)
+# 2.  Cursor-pagination helper
 # ---------------------------------------------------------------------------
-
 def _paginate(
     sess: requests.Session,
     url: str,
     params: Dict[str, Any],
 ) -> Generator[Dict[str, Any], None, None]:
-    """Yield JSON result chunks across ?cursor pagination."""
+    """Yield successive result chunks following Polygon's cursor scheme."""
     while True:
         r = sess.get(url, params=params, timeout=30)
         if r.status_code != 200:
-            logger.error("Polygon %s - %d %s", url, r.status_code, r.text[:256])
+            logger.error("Polygon %s – %d %s", url, r.status_code, r.text[:256])
             r.raise_for_status()
-        data = r.json()
-        for result in data.get("results", []):
-            yield result
-        cursor = data.get("next_url") or data.get("next_cursor") or data.get("next")
-        if cursor:
-            params = {"cursor": cursor, "apiKey": sess.params["apiKey"]}
-            url = BASE_URL + cursor if cursor.startswith("/") else cursor
-        else:
+        payload = r.json()
+        yield from payload.get("results", [])
+        cursor = payload.get("next_url") or payload.get("next_cursor") or payload.get("next")
+        if not cursor:
             break
+        params = {"cursor": cursor, "apiKey": sess.params["apiKey"]}
+        url = BASE_URL + cursor if cursor.startswith("/") else cursor
 
 
 # ---------------------------------------------------------------------------
-# 1. Aggregates v3 - 1-second OHLCV
+# 3.  Aggregates (1-minute OHLCV)
 # ---------------------------------------------------------------------------
-
 def fetch_aggregates(
     start: datetime,
     end: datetime,
     *,
     symbol: str = "SPY",
     multiplier: int = 1,
-    timespan: str = "second",
-    limit: int = 50000,
-    use_cache: bool = True,
+    timespan: str = "minute",          # <-- default minute now
+    limit: int = 50_000,
 ) -> pd.DataFrame:
     """
-    Fetch OHLCV bars for a given time range.
-
-    Parameters
-    ----------
-    start : datetime
-        UTC start timestamp for the bar data.
-    end : datetime
-        UTC end timestamp for the bar data.
-    symbol : str, default "SPY"
-        Ticker symbol to retrieve bars for.
-    multiplier : int, default 1
-        Bar size multiplier (e.g. 1 for 1-minute bars).
-    timespan : str, default "second"
-        Timespan unit ("minute", "hour", etc.).
-    limit : int, default 50000
-        Maximum rows per API call.
-    use_cache : bool, default True
-        Whether to load from / save to local CSV cache.
+    Fetch OHLCV bars for `symbol` between *start* and *end* (inclusive).
 
     Returns
     -------
-    pd.DataFrame
-        Indexed by UTC timestamp with columns:
-        "open", "high", "low", "close", "volume", "vwap", "trades".
+    pd.DataFrame indexed by UTC timestamp with columns:
+    ["open","high","low","close","volume","vwap","trades"].
     """
-    cache_key = f"{symbol}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}"
-    if use_cache and (cached := _load_cache("aggregates", cache_key)) is not None:
-        logger.debug("Aggregates cache hit %s", cache_key)
-        return cached
-
-    # ------- existing API call logic unchanged -------
     sess = _get_session()
-    url  = (f"{BASE_URL}/v2/aggs/ticker/{symbol}/range/{multiplier}/{timespan}/"
-            f"{int(start.timestamp()*1000)}/{int(end.timestamp()*1000)}")
-    params = {"adjusted": "true", "sort": "asc", "limit": limit}
-    rows = list(_paginate(sess, url, params))
+    url = (
+        f"{BASE_URL}/v2/aggs/ticker/{symbol}/range/{multiplier}/{timespan}/"
+        f"{int(start.timestamp()*1000)}/{int(end.timestamp()*1000)}"
+    )
+    rows = list(_paginate(sess, url, {"adjusted": "true", "sort": "asc", "limit": limit}))
     if not rows:
         return pd.DataFrame()
 
-    df = (pd.DataFrame(rows)
-            .assign(timestamp=lambda d: pd.to_datetime(d["t"], unit="ms", utc=True))
-            .set_index("timestamp")
-            .rename(columns={"o":"open","h":"high","l":"low","c":"close",
-                             "v":"volume","vw":"vwap","n":"trades"})
-            .drop(columns=["t"])
-            .sort_index())
-
-    if use_cache:
-        _save_cache("aggregates", cache_key, df)
-
+    df = (
+        pd.DataFrame(rows)
+        .assign(timestamp=lambda d: pd.to_datetime(d["t"], unit="ms", utc=True))
+        .set_index("timestamp")
+        .rename(
+            columns={
+                "o": "open",
+                "h": "high",
+                "l": "low",
+                "c": "close",
+                "v": "volume",
+                "vw": "vwap",
+                "n": "trades",
+            }
+        )
+        .drop(columns=["t"])
+        .sort_index()
+    )
     return df
 
 
 # ---------------------------------------------------------------------------
-# 2. Quotes v3 - NBBO quotes
-# NOTE: WE CURRENTLY DO NOT HAVE ACCESS TO THE QUOTES ENDPOINT IN OUR POLYGON PLAN.
+# 4.  NBBO quotes (plan-dependent)
 # ---------------------------------------------------------------------------
-
 def fetch_quotes(
     date: str | datetime,
     *,
     symbol: str = "SPY",
-    use_cache: bool = True,
 ) -> pd.DataFrame:
     """
-    Fetch tick-level NBBO quotes for a single date.
+    Fetch tick-level NBBO quotes for a single date (UTC).
 
-    Parameters
-    ----------
-    date : str or datetime
-        Date string "YYYY-MM-DD" or datetime to fetch quotes for.
-    symbol : str, default "SPY"
-        Ticker symbol to retrieve quotes for.
-    use_cache : bool, default True
-        Whether to load from / save to local CSV cache.
-
-    Returns
-    -------
-    pd.DataFrame
-        Indexed by UTC timestamp with columns:
-        "bid", "ask", "bid_size", "ask_size", plus any raw Polygon fields.
+    Note
+    ----
+    Requires Polygon **Quotes** entitlement ( ≥ $200/mo ).
     """
-    date_str = pd.to_datetime(date).strftime("%Y-%m-%d")
-    cache_key = f"{symbol}_{date_str}"
-    if use_cache and (hit := _load_cache("quotes", cache_key)) is not None:
-        logger.debug("Quotes cache hit %s", cache_key)
-        return hit
-
-    url   = f"{BASE_URL}/v3/quotes/{symbol}?sort={date_str}"
-    rows  = list(tqdm(_paginate(_get_session(), url, {}), desc=f"quotes {date_str}"))
+    day = pd.to_datetime(date).strftime("%Y-%m-%d")
+    url = f"{BASE_URL}/v3/quotes/{symbol}?timestamp={day}"
+    rows = list(tqdm(_paginate(_get_session(), url, {}), desc=f"quotes {day}"))
     if not rows:
         return pd.DataFrame()
 
-    df = (pd.DataFrame(rows)
-            .assign(timestamp=lambda d: pd.to_datetime(d["sip_timestamp"], unit="ns", utc=True))
-            .set_index("timestamp")
-            .rename(columns={"bid_price":"bid","ask_price":"ask",
-                             "bid_size":"bid_size","ask_size":"ask_size"})
-            .sort_index())
-
-    if use_cache:
-        _save_cache("quotes", cache_key, df)
+    df = (
+        pd.DataFrame(rows)
+        .assign(timestamp=lambda d: pd.to_datetime(d["sip_timestamp"], unit="ns", utc=True))
+        .set_index("timestamp")
+        .rename(
+            columns={
+                "bid_price": "bid",
+                "ask_price": "ask",
+                "bid_size": "bid_size",
+                "ask_size": "ask_size",
+            }
+        )
+        .sort_index()
+    )
     return df
 
 
 # ---------------------------------------------------------------------------
-# 3. Trades v3 - tick prints
+# 5.  Trades (tick prints)
 # ---------------------------------------------------------------------------
-
 def fetch_trades(
     date: str | datetime,
     *,
     symbol: str = "SPY",
-    use_cache: bool = True,
 ) -> pd.DataFrame:
-    """
-    Fetch tick-level trade prints for a single date.
-
-    Parameters
-    ----------
-    date : str or datetime
-        Date string "YYYY-MM-DD" or datetime to fetch trades for.
-    symbol : str, default "SPY"
-        Ticker symbol to retrieve trade prints for.
-    use_cache : bool, default True
-        Whether to load from / save to local CSV cache.
-
-    Returns
-    -------
-    pd.DataFrame
-        Indexed by UTC timestamp with columns:
-        "price", "size", "conditions", "trade_id", plus any raw Polygon fields.
-    """
-    date_str  = pd.to_datetime(date).strftime("%Y-%m-%d")
-    cache_key = f"{symbol}_{date_str}"
-    if use_cache and (hit := _load_cache("trades", cache_key)) is not None:
-        logger.debug("Trades cache hit %s", cache_key)
-        return hit
-
-    url  = f"{BASE_URL}/v3/trades/{symbol}?timestamp={date_str}"
-    rows = list(tqdm(_paginate(_get_session(), url, {}), desc=f"trades {date_str}"))
+    """Fetch tick-level trade prints for a single date (UTC)."""
+    day = pd.to_datetime(date).strftime("%Y-%m-%d")
+    url = f"{BASE_URL}/v3/trades/{symbol}?timestamp={day}"
+    rows = list(tqdm(_paginate(_get_session(), url, {}), desc=f"trades {day}"))
     if not rows:
         return pd.DataFrame()
 
-    df = (pd.DataFrame(rows)
-            .assign(timestamp=lambda d: pd.to_datetime(d["sip_timestamp"], unit="ns", utc=True))
-            .set_index("timestamp")
-            .rename(columns={"p":"price","s":"size","c":"conditions","t":"trade_id"})
-            .sort_index())
-
-    if use_cache:
-        _save_cache("trades", cache_key, df)
+    df = (
+        pd.DataFrame(rows)
+        .assign(timestamp=lambda d: pd.to_datetime(d["sip_timestamp"], unit="ns", utc=True))
+        .set_index("timestamp")
+        .rename(columns={"p": "price", "s": "size", "c": "conditions", "t": "trade_id"})
+        .sort_index()
+    )
     return df
 
 
 # ---------------------------------------------------------------------------
-# 4. Option-chain snapshot  (robust timestamp + explicit flatten)
+# 4. Option-chain snapshot (robust flatten)
 # ---------------------------------------------------------------------------
 def fetch_option_chain_snapshot(
     *,
     underlying: str = "SPY",
-    use_cache: bool = True,
 ) -> pd.DataFrame:
     """
-    Fetch an option-chain snapshot (contracts, greeks, IV, OI, etc.).
+    Fetch a snapshot of all option contracts for *underlying*.
 
-    Timestamp logic
-    ---------------
-    Per contract we use, in order of preference:
-      1. last_quote.last_updated      (ns since epoch)
-      2. last_trade.sip_timestamp     (ns since epoch)
-      3. underlying_asset.last_updated(ns since epoch)
-
-    Parameters
-    ----------
-    underlying : str, default "SPY"
-        Underlying asset ticker symbol to fetch the option chain for.
-    use_cache : bool, default True
-        Whether to load from / save to local CSV cache.
+    Timestamp rule (per-row)
+    ------------------------
+    First non-null of:
+        • last_quote.last_updated      (ns)
+        • last_trade.sip_timestamp     (ns)
+        • underlying_asset.last_updated(ns)
 
     Returns
     -------
     pd.DataFrame
-        Row per contract, indexed by the chosen UTC timestamp.
+        One row per contract, indexed by UTC timestamp, flat columns.
     """
-    cache_key = f"{underlying}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
-    if use_cache and (hit := _load_cache("chain", cache_key)) is not None:
-        return hit
-
-    url   = f"{BASE_URL}/v3/snapshot/options/{underlying}?limit=250"    # Default limit is 250
-    resp  = _get_session().get(url, timeout=60)
+    url  = f"{BASE_URL}/v3/snapshot/options/{underlying}?limit=250"
+    resp = _get_session().get(url, timeout=60)
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    results: list[dict[str, Any]] = resp.json().get("results", [])
     if not results:
         return pd.DataFrame()
 
     rows: list[dict[str, Any]] = []
     for r in results:
-        # 1. choose timestamp for *this* contract
+        quote = r.get("last_quote", {}) or {}
+        trade = r.get("last_trade", {}) or {}
+        ua    = r.get("underlying_asset", {}) or {}
+
         ts_ns = (
-            r.get("last_quote", {}).get("last_updated")
-            or r.get("last_trade", {}).get("sip_timestamp")
-            or r.get("underlying_asset", {}).get("last_updated")
+            quote.get("last_updated")
+            or trade.get("sip_timestamp")
+            or ua.get("last_updated")
         )
         if ts_ns is None:
-            # Skip contracts with no time reference (very rare)
+            # very rare; skip contract that has no time reference
             continue
         ts = pd.to_datetime(ts_ns, unit="ns", utc=True)
 
-        # 2. flatten just the fields we care about
-        rec = {
-            "timestamp": ts,
-            "symbol":    r["details"]["ticker"],
-            "contract_type":   r["details"]["contract_type"],
-            "exercise_style":  r["details"]["exercise_style"],
-            "expiration_date": r["details"]["expiration_date"],
-            "strike_price":    r["details"]["strike_price"],
-            "break_even_price": r.get("break_even_price"),
-            "open_interest":    r.get("open_interest"),
-            "implied_volatility": r.get("implied_volatility"),
-            # greeks
-            **{f"greeks_{k}": v for k, v in r.get("greeks", {}).items()},
-            # day stats (add others if you wish)
-            **{f"day_{k}": v for k, v in r.get("day", {}).items()},
-            # quote + trade (omit the raw ns timestamps we just used)
-            **{f"quote_{k}": v for k, v in r.get("last_quote", {}).items()
-               if k != "last_updated"},
-            **{f"trade_{k}": v for k, v in r.get("last_trade", {}).items()
-               if k != "sip_timestamp"},
-            # underlying snapshot
-            "underlying_price": r["underlying_asset"].get("price"),
-        }
-        rows.append(rec)
+        rows.append(
+            {
+                "timestamp": ts,
+                "option_symbol":   r["details"]["ticker"],
+                "contract_type":   r["details"]["contract_type"],
+                "expiration_date": r["details"]["expiration_date"],
+                "strike_price":    r["details"]["strike_price"],
+                "break_even_price": r.get("break_even_price"),
+                "open_interest":    r.get("open_interest"),
+                "implied_volatility": r.get("implied_volatility"),
+                # greeks
+                **{f"greeks_{k}": v for k, v in r.get("greeks", {}).items()},
+                # day stats
+                **{f"day_{k}": v for k, v in r.get("day", {}).items()},
+                # quote (may be empty)
+                "bid":       quote.get("bid"),
+                "ask":       quote.get("ask"),
+                "bid_size":  quote.get("bid_size"),
+                "ask_size":  quote.get("ask_size"),
+                # trade (may be empty)
+                "last_trade_price": trade.get("price"),
+                "last_trade_size":  trade.get("size"),
+                # underlying
+                "underlying_price": ua.get("price"),
+            }
+        )
 
-    df = pd.DataFrame(rows).set_index("timestamp").sort_index()
-
-    if use_cache:
-        _save_cache("chain", cache_key, df)
-    return df
-
+    return pd.DataFrame(rows).set_index("timestamp").sort_index()
 
 
 # ---------------------------------------------------------------------------
-# CLI helper - python -m valorem.data.ingestion.polygon
+# 7.  CLI helper
 # ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    import argparse, sys
+    import argparse
+    from pathlib import Path
 
-    parser = argparse.ArgumentParser(description="Download SPY Polygon data to CSV")
-    parser.add_argument(
-        "endpoint",
-        choices=["aggregates", "quotes", "trades", "chain"],
-        help="Which endpoint to pull",
-    )
-    parser.add_argument("--out", default="poly_data.csv", help="Output CSV path")
-    parser.add_argument("--no-cache", action="store_true", help="Ignore local cache")
-    parser.add_argument("--date", help="Date YYYY-MM-DD (quotes,trades,l2,chain)")
-    parser.add_argument(
-        "--start", help="Start datetime YYYY-MM-DDTHH:MM:SS (aggregates only)"
-    )
-    parser.add_argument(
-        "--end", help="End datetime YYYY-MM-DDTHH:MM:SS (aggregates only)"
-    )
-
+    parser = argparse.ArgumentParser(description="Download SPY Polygon data → CSV")
+    parser.add_argument("endpoint", choices=["aggregates", "quotes", "trades", "chain"])
+    parser.add_argument("--out", default="poly_data.csv")
+    parser.add_argument("--date", help="YYYY-MM-DD for quotes/trades")
+    parser.add_argument("--start", help="YYYY-MM-DDTHH:MM:SS for aggregates")
+    parser.add_argument("--end",   help="YYYY-MM-DDTHH:MM:SS for aggregates")
     args = parser.parse_args()
 
-    try:
-        if args.endpoint == "aggregates":
-            if not (args.start and args.end):
-                parser.error("aggregates requires --start and --end")
-            df_out = fetch_aggregates(
-                start=pd.to_datetime(args.start).tz_localize("UTC"),
-                end=pd.to_datetime(args.end).tz_localize("UTC"),
-            )
-        elif args.endpoint == "quotes":
-            if not args.date:
-                parser.error("quotes requires --date")
-            df_out = fetch_quotes(args.date)
-        elif args.endpoint == "trades":
-            if not args.date:
-                parser.error("trades requires --date")
-            df_out = fetch_trades(args.date)
-        elif args.endpoint == "chain":
-            df_out = fetch_option_chain_snapshot()
-        else:
-            parser.error("Unknown endpoint")
-    except Exception as exc:
-        logger.error("Error fetching Polygon data: %s", exc)
-        sys.exit(1)
+    if args.endpoint == "aggregates":
+        if not (args.start and args.end):
+            parser.error("--start and --end required for aggregates")
+        df_out = fetch_aggregates(
+            start=pd.to_datetime(args.start).tz_localize("UTC"),
+            end=pd.to_datetime(args.end).tz_localize("UTC"),
+        )
+    elif args.endpoint == "quotes":
+        if not args.date:
+            parser.error("--date required for quotes")
+        df_out = fetch_quotes(args.date)
+    elif args.endpoint == "trades":
+        if not args.date:
+            parser.error("--date required for trades")
+        df_out = fetch_trades(args.date)
+    elif args.endpoint == "chain":
+        df_out = fetch_option_chain_snapshot()
+    else:
+        parser.error("Unknown endpoint")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

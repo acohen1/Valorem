@@ -1,38 +1,34 @@
 from __future__ import annotations
-
-"""FRED data ingestion utilities.
+"""
+FRED data ingestion utilities.
 
 This module centralizes all pulls from the Federal Reserve Economic Data (FRED)
-API and returns tidy pandas DataFrames that downstream pipelines can write into
-Valorem's SQLite feature store.
+API and returns tidy pandas DataFrames ready for Valorem's feature store.
 
 Key design points
 -----------------
-- Reads the *FRED_API_KEY* from ``.env`` (using *python-dotenv*).
-- Uses **fredapi** under the hood for convenience and reliability.
-- A single public helper, :func:`fetch`, pulls either the default macro
-  dashboard (see :data:`DEFAULT_SERIES`) or a user-supplied list of series IDs.
-- Returns a **wide-form** DataFrame indexed by ``pd.DatetimeIndex`` (daily
-  frequency, forward-filled) with column names either the raw FRED IDs or the
-  prettier aliases declared in :data:`DEFAULT_SERIES`.
-- Minimal local caching: one CSV per series in ``~/.valorem_cache/fred`` to
-  accelerate repeat development-time runs without hammering the API.
+* Reads *FRED_API_KEY* from `.env` (via *python-dotenv*).
+* Single public helper `fetch()` pulls either:
+  - the default macro dashboard (`DEFAULT_SERIES`), or
+  - a user-supplied list of series IDs.
+* Returns a **wide** DataFrame indexed by `DatetimeIndex` (daily), forward-filled
+  as needed.
+* SQLite is the single durable store.  Scripts decide
+  whether data are missing before calling `fetch()`.
 
 Example
-~~~~~~~
+-------
 >>> from valorem.data.ingestion.fred import fetch
->>> df = fetch()
+>>> df = fetch(start="2000-01-01")
 >>> df.head()
 
 Dependencies
-~~~~~~~~~~~~
-``pip install fredapi python-dotenv pandas``
+------------
+pip install fredapi python-dotenv pandas
 """
-
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-import shutil
 import logging
 import os
 
@@ -46,7 +42,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # ---------------------------------------------------------------------------
-# Default macro dashboard — IDs -> human-readable aliases
+# Default macro dashboard — IDs → human-readable aliases
 # ---------------------------------------------------------------------------
 DEFAULT_SERIES: dict[str, str] = {
     "FEDFUNDS": "fed_funds_rate",
@@ -73,78 +69,20 @@ DEFAULT_SERIES: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Helper functions
+# Internal helpers
 # ---------------------------------------------------------------------------
-
 def _get_fred() -> Fred:
-    """Instantiate a *fredapi.Fred* client with API key from environment."""
-    load_dotenv()  # idempotent; no-op if .env absent
-    api_key = os.getenv("FRED_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "FRED_API_KEY not found. Populate it in your .env (see .env.example)."
-        )
-    return Fred(api_key=api_key)
-
-
-_CACHE_DIR = Path.home() / ".valorem_cache" / "fred"
-_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _series_cache_path(series_id: str) -> Path:
-    """Return path for on-disk CSV cache of the given series ID."""
-    return _CACHE_DIR / f"{series_id}.csv"
-
-
-def _load_from_cache(series_id: str) -> pd.Series | None:
-    """Load a series from local CSV cache if it exists and is non-empty."""
-    path = _series_cache_path(series_id)
-    if not path.exists() or path.stat().st_size == 0:
-        return None
-    try:
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-        if df.empty:
-            return None
-        series = df.iloc[:, 0]
-        series.name = series_id
-        return series
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Failed to read cache for %s: %s", series_id, exc)
-        return None
-
-
-def _save_to_cache(series_id: str, series: pd.Series) -> None:
-    path = _series_cache_path(series_id)
-    series.to_csv(path, header=True)
-
-def clear_fred_cache(series_id: str | None = None) -> None:
-    """
-    Clear the on‐disk FRED CSV cache.
-
-    Parameters
-    ----------
-    series_id : str or None
-        If given, removes the single file for that series (e.g. "FEDFUNDS").
-        If None, wipes the entire ~/.valorem_cache/fred directory.
-    """
-    if series_id:
-        path = _series_cache_path(series_id)
-        if path.exists():
-            path.unlink()
-            logger.info("Cleared FRED cache for series %r", series_id)
-        else:
-            logger.info("No cache file to clear for series %r", series_id)
-    else:
-        if _CACHE_DIR.exists():
-            shutil.rmtree(_CACHE_DIR)
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info("Cleared all FRED cache")
+    """Instantiate a `fredapi.Fred` client using the API key in the environment."""
+    load_dotenv()
+    key = os.getenv("FRED_API_KEY")
+    if not key:
+        raise EnvironmentError("FRED_API_KEY not found. Add it to your .env.")
+    return Fred(api_key=key)
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public fetcher
 # ---------------------------------------------------------------------------
-
 def fetch(
     series: Iterable[str] | None = None,
     *,
@@ -152,59 +90,39 @@ def fetch(
     end: str | datetime | None = None,
     rename: bool = True,
     forward_fill: bool = True,
-    use_cache: bool = True,
 ) -> pd.DataFrame:
-    """Fetch one or multiple FRED series and return a *wide-form* DataFrame.
+    """
+    Pull one or more FRED time-series and return a wide DataFrame.
 
     Parameters
     ----------
-    series
-        Iterable of FRED series IDs. Defaults to :data:`DEFAULT_SERIES` keys.
-    start, end
-        Optional inclusive date filter (string ``YYYY-MM-DD`` or *datetime*).
-    rename
-        If *True*, rename columns with human-readable aliases from
-        :data:`DEFAULT_SERIES` when available.
-    forward_fill
-        Whether to forward-fill missing observations (important when mixing
-        daily series with lower-frequency releases).
-    use_cache
-        Skip API calls for any series already cached on disk.
+    series : iterable[str] or None
+        FRED series IDs to fetch.  Defaults to `DEFAULT_SERIES.keys()`.
+    start, end : str | datetime | None
+        Optional inclusive date bounds ("YYYY-MM-DD" or datetime).
+    rename : bool, default True
+        Replace raw FRED IDs with human aliases from `DEFAULT_SERIES`.
+    forward_fill : bool, default True
+        Forward-fill missing observations (for mix of daily / monthly series).
 
     Returns
     -------
-    pandas.DataFrame
-        Index = daily ``pd.DatetimeIndex``. Columns = series. Values = floats.
+    pd.DataFrame
+        Index = daily `DatetimeIndex`, columns = series, values = floats.
     """
-
     fred = _get_fred()
+    ids = list(series) if series is not None else list(DEFAULT_SERIES.keys())
 
-    if series is None:
-        series = list(DEFAULT_SERIES.keys())
-    else:
-        series = list(series)
+    frames: list[pd.Series] = []
+    for sid in ids:
+        logger.info("Fetching %s from FRED", sid)
+        s = fred.get_series(sid, observation_start=start, observation_end=end)
+        if not isinstance(s, pd.Series):
+            s = pd.Series(s)
+        s.name = sid
+        frames.append(s)
 
-    dfs: list[pd.Series] = []
-
-    for sid in series:
-        # Try local cache first
-        cached = _load_from_cache(sid) if use_cache else None
-        if cached is not None:
-            s = cached
-            logger.debug("Loaded %s from cache", sid)
-        else:
-            logger.info("Requesting %s from FRED", sid)
-            s = fred.get_series(sid, observation_start=start, observation_end=end)
-            if not isinstance(s, pd.Series):
-                s = pd.Series(s)
-            s.name = sid
-            if use_cache:
-                _save_to_cache(sid, s)
-
-        dfs.append(s)
-
-    # Align + merge
-    df = pd.concat(dfs, axis=1).sort_index()
+    df = pd.concat(frames, axis=1).sort_index()
 
     if start is not None:
         df = df.loc[pd.to_datetime(start) :]
@@ -221,24 +139,21 @@ def fetch(
 
 
 # ---------------------------------------------------------------------------
-# Simple CLI helper (python -m valorem.data.ingestion.fred)
+# Simple CLI helper  (python -m valorem.data.ingestion.fred)
 # ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    import argparse, sys
+    import argparse
+    from pathlib import Path
+    import sys
 
     parser = argparse.ArgumentParser(description="Download FRED series to CSV")
     parser.add_argument("--out", default="fred_data.csv", help="Output CSV path")
     parser.add_argument("--start", help="Start date YYYY-MM-DD")
     parser.add_argument("--end", help="End date YYYY-MM-DD")
-    parser.add_argument(
-        "--no-cache", action="store_true", help="Ignore on-disk cache and refetch"
-    )
-
     args = parser.parse_args()
 
     try:
-        df_out = fetch(start=args.start, end=args.end, use_cache=not args.no_cache)
+        df_out = fetch(start=args.start, end=args.end)
     except Exception as exc:
         logger.error("Error fetching FRED data: %s", exc)
         sys.exit(1)
