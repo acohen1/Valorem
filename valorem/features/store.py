@@ -24,6 +24,10 @@ import logging
 from datetime import datetime
 from typing import Any, Iterator
 
+import json
+import numbers
+import numpy as np
+
 import pandas as pd
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
@@ -92,24 +96,44 @@ def create_table_if_absent(table: str, df: pd.DataFrame, engine: Engine | None =
 # ---------------------------------------------------------------------------
 # Upsert helper
 # ---------------------------------------------------------------------------
+def _scalarize(val: Any) -> Any:
+    """Convert complex Python objects into SQLite-safe scalars."""
+    if val is None or isinstance(val, (str, bytes, numbers.Number, bool)):
+        return val
+    # lists / dicts / numpy arrays → JSON text
+    if isinstance(val, (list, dict, np.ndarray)):
+        return json.dumps(val, separators=(",", ":"))
+    # fallback: string‐ify
+    return str(val)
 
-def upsert(df: pd.DataFrame, table: str, *, engine: Engine | None = None, chunk: int = 5000) -> None:
-    """Insert or replace *df* into *table* keyed on the date index."""
+def upsert(
+    df: pd.DataFrame,
+    table: str,
+    *,
+    engine: Engine | None = None,
+    chunk: int = 5000,
+) -> None:
+    """Insert or replace *df* into *table* keyed on the datetime index."""
     if engine is None:
         engine = get_engine()
 
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("DataFrame index must be a DatetimeIndex for upsert().")
 
-    create_table_if_absent(table, df, engine)
+    # sanitize → all scalar / JSON-text
+    sanitized = df.copy()
+    for col in sanitized.columns:
+        sanitized[col] = sanitized[col].map(_scalarize)
+
+    create_table_if_absent(table, sanitized, engine)
 
     records = [
-        (dt.strftime("%Y-%m-%d"), *row)
-        for dt, row in zip(df.index.to_pydatetime(), df.to_numpy())
+        (dt.strftime("%Y-%m-%d %H:%M:%S.%f"), *row)
+        for dt, row in zip(sanitized.index.to_pydatetime(), sanitized.to_numpy())
     ]
 
     placeholders = ",".join(["?"] * (1 + len(df.columns)))
-    columns_sql = ",".join(["date"] + list(df.columns))
+    columns_sql  = ",".join(["date"] + list(df.columns))
     sql = f"INSERT OR REPLACE INTO {table} ({columns_sql}) VALUES ({placeholders});"
 
     with _txn(engine) as conn:

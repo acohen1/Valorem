@@ -13,7 +13,6 @@ Key design points
   - `fetch_aggregates` for 1-second OHLCV bars (Aggregates v3).
   - `fetch_quotes`  for NBBO quote ticks (Quotes v3).
   - `fetch_trades`  for trade prints (Trades v3).
-  - `fetch_l2_snapshots` for L2 order-book depth snapshots (Snapshot v2).
   - `fetch_option_chain_snapshot` for full option chain with greeks (Snapshot v3).
 * Handles cursor-based pagination automatically.
 * Returns DataFrames with a `DatetimeIndex` (UTC) and consistent column naming.
@@ -314,50 +313,8 @@ def fetch_trades(
     return df
 
 
-
 # ---------------------------------------------------------------------------
-# 4. L2 Book snapshots v2
-# ---------------------------------------------------------------------------
-
-def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = True) -> pd.DataFrame:
-    """
-    Fetch a single Level-2 order-book snapshot.
-
-    Parameters
-    ----------
-    symbol : str, default "SPY"
-        Ticker symbol to retrieve the L2 snapshot for.
-    use_cache : bool, default True
-        Whether to load from / save to local CSV cache.
-
-    Returns
-    -------
-    pd.DataFrame
-        Single-row DataFrame indexed by UTC timestamp with columns:
-        "bid_px_1", "bid_sz_1", …, "ask_px_5", "ask_sz_5".
-    """
-    cache_key = f"{symbol}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
-    if use_cache and (hit := _load_cache("l2", cache_key)) is not None:
-        return hit
-
-    url  = f"{BASE_URL}/v2/snapshot/locale/us/markets/stocks/tickers/{symbol}"
-    book = _get_session().get(url, timeout=30).json().get("ticker", {})
-    ts   = pd.to_datetime(book.get("lastUpdate", 0), unit="ms", utc=True)
-
-    def _side(levels: List[List[Any]], s: str) -> Dict[str, Any]:
-        return {f"{s}_{k}_{i+1}": v for i,(v,k) in enumerate([(px,"px"),(sz,"sz")] for px,sz in levels[:5])}
-
-    flat = {**_side(book.get("bids", []), "bid"), **_side(book.get("asks", []), "ask")}
-    df   = pd.DataFrame([flat], index=[ts])
-
-    if use_cache:
-        _save_cache("l2", cache_key, df)
-    return df
-
-
-
-# ---------------------------------------------------------------------------
-# 5. Option-chain snapshot  (robust timestamp + explicit flatten)
+# 4. Option-chain snapshot  (robust timestamp + explicit flatten)
 # ---------------------------------------------------------------------------
 def fetch_option_chain_snapshot(
     *,
@@ -453,7 +410,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download SPY Polygon data to CSV")
     parser.add_argument(
         "endpoint",
-        choices=["aggregates", "quotes", "trades", "l2", "chain"],
+        choices=["aggregates", "quotes", "trades", "chain"],
         help="Which endpoint to pull",
     )
     parser.add_argument("--out", default="poly_data.csv", help="Output CSV path")
@@ -484,8 +441,6 @@ if __name__ == "__main__":
             if not args.date:
                 parser.error("trades requires --date")
             df_out = fetch_trades(args.date)
-        elif args.endpoint == "l2":
-            df_out = fetch_l2_snapshots()
         elif args.endpoint == "chain":
             df_out = fetch_option_chain_snapshot()
         else:
