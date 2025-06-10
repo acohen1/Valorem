@@ -319,7 +319,7 @@ def fetch_trades(
 # 4. L2 Book snapshots v2
 # ---------------------------------------------------------------------------
 
-def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.DataFrame:
+def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = True) -> pd.DataFrame:
     """
     Fetch a single Level-2 order-book snapshot.
 
@@ -327,7 +327,7 @@ def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.Da
     ----------
     symbol : str, default "SPY"
         Ticker symbol to retrieve the L2 snapshot for.
-    use_cache : bool, default False
+    use_cache : bool, default True
         Whether to load from / save to local CSV cache.
 
     Returns
@@ -357,64 +357,90 @@ def fetch_l2_snapshots(*, symbol: str = "SPY", use_cache: bool = False) -> pd.Da
 
 
 # ---------------------------------------------------------------------------
-# 5. Options chain snapshot
+# 5. Option-chain snapshot  (robust timestamp + explicit flatten)
 # ---------------------------------------------------------------------------
-
 def fetch_option_chain_snapshot(
-    *, 
-    underlying: str = "SPY", 
-    use_cache: bool = False
+    *,
+    underlying: str = "SPY",
+    use_cache: bool = True,
 ) -> pd.DataFrame:
     """
-    Fetch a full options chain snapshot with greeks.
+    Fetch an option-chain snapshot (contracts, greeks, IV, OI, etc.).
+
+    Timestamp logic
+    ---------------
+    Per contract we use, in order of preference:
+      1. last_quote.last_updated      (ns since epoch)
+      2. last_trade.sip_timestamp     (ns since epoch)
+      3. underlying_asset.last_updated(ns since epoch)
 
     Parameters
     ----------
     underlying : str, default "SPY"
-    use_cache : bool, default False
+        Underlying asset ticker symbol to fetch the option chain for.
+    use_cache : bool, default True
+        Whether to load from / save to local CSV cache.
 
     Returns
     -------
     pd.DataFrame
-        Multi-row DataFrame indexed by UTC timestamp.
+        Row per contract, indexed by the chosen UTC timestamp.
     """
     cache_key = f"{underlying}_{pd.Timestamp.utcnow():%Y%m%d%H%M}"
     if use_cache and (hit := _load_cache("chain", cache_key)) is not None:
         return hit
 
-    url     = f"{BASE_URL}/v3/snapshot/options/{underlying}"
-    results = _get_session().get(url, timeout=60).json().get("results", [])
+    url   = f"{BASE_URL}/v3/snapshot/options/{underlying}?limit=250"    # Default limit is 250
+    resp  = _get_session().get(url, timeout=60)
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
     if not results:
         return pd.DataFrame()
 
-    df = pd.json_normalize(results)
+    rows: list[dict[str, Any]] = []
+    for r in results:
+        # 1. choose timestamp for *this* contract
+        ts_ns = (
+            r.get("last_quote", {}).get("last_updated")
+            or r.get("last_trade", {}).get("sip_timestamp")
+            or r.get("underlying_asset", {}).get("last_updated")
+        )
+        if ts_ns is None:
+            # Skip contracts with no time reference (very rare)
+            continue
+        ts = pd.to_datetime(ts_ns, unit="ns", utc=True)
 
-    # 1) Gather any candidate timestamp columns
-    candidates = [c for c in df.columns 
-                  if ("last_updated" in c) or ("sip_timestamp" in c)]
-    if not candidates:
-        raise KeyError(f"No timestamp-like column in options snapshot: cols={df.columns.tolist()}")
+        # 2. flatten just the fields we care about
+        rec = {
+            "timestamp": ts,
+            "symbol":    r["details"]["ticker"],
+            "contract_type":   r["details"]["contract_type"],
+            "exercise_style":  r["details"]["exercise_style"],
+            "expiration_date": r["details"]["expiration_date"],
+            "strike_price":    r["details"]["strike_price"],
+            "break_even_price": r.get("break_even_price"),
+            "open_interest":    r.get("open_interest"),
+            "implied_volatility": r.get("implied_volatility"),
+            # greeks
+            **{f"greeks_{k}": v for k, v in r.get("greeks", {}).items()},
+            # day stats (add others if you wish)
+            **{f"day_{k}": v for k, v in r.get("day", {}).items()},
+            # quote + trade (omit the raw ns timestamps we just used)
+            **{f"quote_{k}": v for k, v in r.get("last_quote", {}).items()
+               if k != "last_updated"},
+            **{f"trade_{k}": v for k, v in r.get("last_trade", {}).items()
+               if k != "sip_timestamp"},
+            # underlying snapshot
+            "underlying_price": r["underlying_asset"].get("price"),
+        }
+        rows.append(rec)
 
-    # 2) Define a priority order
-    for preferred in ["last_quote.last_updated", 
-                      "last_trade.sip_timestamp",
-                      "day.last_updated",
-                      "underlying_asset.last_updated"]:
-        if preferred in candidates:
-            ts_field = preferred
-            break
-    else:
-        # fallback to first match
-        ts_field = candidates[0]
-
-    # 3) Convert to datetime index
-    unit = "ns" if "sip_timestamp" in ts_field or "last_updated" in ts_field else "ms"
-    df["timestamp"] = pd.to_datetime(df[ts_field], unit=unit, utc=True)
-    df = df.set_index("timestamp").sort_index()
+    df = pd.DataFrame(rows).set_index("timestamp").sort_index()
 
     if use_cache:
         _save_cache("chain", cache_key, df)
     return df
+
 
 
 # ---------------------------------------------------------------------------
