@@ -66,6 +66,10 @@ DEFAULT_SERIES: dict[str, str] = {
     "BAMLC0A4CBBB": "bbb_oas",
     "STLFSI4": "st_louis_fci",
     "WALCL": "fed_balance_sheet",
+    "SP500": "sp500_index",
+    "DJIA": "dow_jones_index",
+    "NASDAQCOM": "nasdaq_index",
+    "VIXCLS": "vix_index",
 }
 
 # ---------------------------------------------------------------------------

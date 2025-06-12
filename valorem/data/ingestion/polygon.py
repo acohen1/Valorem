@@ -90,7 +90,7 @@ def _paginate(
 
 
 # ---------------------------------------------------------------------------
-# 3.  Aggregates (1-minute OHLCV)
+# 3.  Aggregates (default 1-minute OHLCV)
 # ---------------------------------------------------------------------------
 def fetch_aggregates(
     start: datetime,
@@ -98,7 +98,7 @@ def fetch_aggregates(
     *,
     symbol: str = "SPY",
     multiplier: int = 1,
-    timespan: str = "minute",          # <-- default minute now
+    timespan: str = "minute",
     limit: int = 50_000,
 ) -> pd.DataFrame:
     """
@@ -152,7 +152,7 @@ def fetch_quotes(
 
     Note
     ----
-    Requires Polygon **Quotes** entitlement ( ≥ $200/mo ).
+    Requires Polygon **Quotes** entitlement ( >= $200/mo )
     """
     day = pd.to_datetime(date).strftime("%Y-%m-%d")
     url = f"{BASE_URL}/v3/quotes/{symbol}?timestamp={day}"
@@ -278,7 +278,7 @@ def fetch_option_chain_snapshot(
 
 
 # ---------------------------------------------------------------------------
-# 7.  CLI helper
+# 7.  CLI helper (python -m valorem.data.ingestion.polygon)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse

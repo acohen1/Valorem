@@ -91,8 +91,17 @@ def create_table_if_absent(
     Columns are declared REAL; you can ALTER later if you need TEXT/BLOB.
     """
     engine = engine or get_engine()
-    if inspect(engine).has_table(table):
-        return
+    insp = inspect(engine)
+    if insp.has_table(table):
+        # If table exists, check for missing columns and migrate schema if needed
+        existing = {col["name"] for col in insp.get_columns(table)}
+        missing  = [c for c in df.columns if c not in existing]
+        if missing:
+            with engine.begin() as conn:
+                for col in missing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} REAL;"))
+                    logger.info("Added column %s to %s", col, table)
+        return                                   # now table is up-to-date
 
     cols_sql = ["date TEXT PRIMARY KEY"] + [f"{c} REAL" for c in df.columns]
     ddl = f"CREATE TABLE {table} ({', '.join(cols_sql)});"
