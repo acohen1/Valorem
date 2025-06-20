@@ -50,29 +50,29 @@ $ python scripts/setup_env.py
 valorem/
 ├── data/
 │   └── ingestion/
-│       ├── fred.py              # FRED API fetchers
-│       └── polygon.py           # Polygon fetchers (bars, trades, options)
-│
-├── features/
-│   └── store.py                # SQLite persistence and schema management
-│
-├── pipelines/
-│   ├── update_macro.py         # Macro table loader (REPLACE mode)
-│   └── update_spy_market.py    # SPY bars/trades/chain loader (APPEND mode)
-│
+│       ├── fred.py                    # Macroeconomic data fetcher from FRED
+│       └── polygon.py                 # Market microstructure fetcher from Polygon.io
 ├── preprocessing/
-│   └── align.py                # Timestamp alignment and forward-filling
-│
+│   └── align.py                       # Aligns DataFrames to a shared timeline
+├── features/
+│   └── store.py                       # Upsert, load, schema‑migration, WAL SQLite store
 ├── models/
-│   └── patchtst/               # PatchTST model components (WIP)
-│
-├── scripts/
-│   └── setup_env.py            # Environment scaffolding
-│
-├── notebooks/                  # Exploratory notebooks & visualizations
-├── tests/                      # Unit + integration tests
-├── .env.template               # Example env file for API keys
-└── README.md                   # You are here
+│   └── patchtst_model.py              # PatchTST forecasting model definition 
+├── pipelines/
+│   ├── update_macro.py                # FRED pipeline for macro_daily
+│   ├── update_spy_market.py           # Polygon pipeline for SPY data
+
+.notebooks/                            # Jupyter notebooks for exploration and testing
+scripts/
+│   └── setup_env.py                   # One-time setup for .env scaffolding
+tests/                                 
+│   └── test_align.py
+.env                                   # Local API keys (not tracked)
+.env.example                           # Template for .env (tracked)
+.gitignore
+pyproject.toml
+README.md                              # You are here!
+valorem.db                             # SQLite feature store (auto-created)
 ```
 
 ---
