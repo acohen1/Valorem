@@ -41,6 +41,13 @@ __all__ = ["DEFAULT_SERIES", "fetch"]
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
+
 # ---------------------------------------------------------------------------
 # Default macro dashboard — IDs → human-readable aliases
 # ---------------------------------------------------------------------------
@@ -145,7 +152,7 @@ def fetch(
 # ---------------------------------------------------------------------------
 # Simple CLI helper  (python -m valorem.data.ingestion.fred)
 # ---------------------------------------------------------------------------
-if __name__ == "__main__":
+def cli() -> None:
     import argparse
     from pathlib import Path
     import sys
@@ -166,3 +173,7 @@ if __name__ == "__main__":
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_out.to_csv(out_path, index=True)
     logger.info("Saved FRED data → %s (%d rows, %d cols)", out_path, *df_out.shape)
+
+if __name__ == "__main__":
+    logger.info("Running FRED data ingestion CLI")
+    cli()

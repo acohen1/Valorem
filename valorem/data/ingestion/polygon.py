@@ -50,6 +50,13 @@ __all__ = [
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
+
 BASE_URL = "https://api.polygon.io"
 
 
@@ -215,9 +222,9 @@ def fetch_option_chain_snapshot(
     Timestamp rule (per-row)
     ------------------------
     First non-null of:
-        • last_quote.last_updated      (ns)
-        • last_trade.sip_timestamp     (ns)
-        • underlying_asset.last_updated(ns)
+        - last_quote.last_updated      (ns)
+        - last_trade.sip_timestamp     (ns)
+        - underlying_asset.last_updated(ns)
 
     Returns
     -------
@@ -280,7 +287,7 @@ def fetch_option_chain_snapshot(
 # ---------------------------------------------------------------------------
 # 7.  CLI helper (python -m valorem.data.ingestion.polygon)
 # ---------------------------------------------------------------------------
-if __name__ == "__main__":
+def cli() -> None:
     import argparse
     from pathlib import Path
 
@@ -316,3 +323,7 @@ if __name__ == "__main__":
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_out.to_csv(out_path, index=True)
     logger.info("Saved → %s (%d rows, %d cols)", out_path, *df_out.shape)
+
+if __name__ == "__main__":
+    cli()
+

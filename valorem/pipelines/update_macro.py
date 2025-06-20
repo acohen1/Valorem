@@ -26,31 +26,36 @@ from valorem.data.ingestion.fred import fetch
 from valorem.data.preprocessing import align_and_trim
 from valorem.features.store import upsert
 
-logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO
-)
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
 
 # ---------------------------------------------------------------------------
-
+# Main pipeline
+# ---------------------------------------------------------------------------
 
 def run(series: Sequence[str] | None, start: str | None, end: str | None) -> None:
-    log.info("Fetching FRED data …")
+    logger.info("Fetching FRED data …")
     raw = fetch(series=series, start=start, end=end)
 
-    log.info("Aligning & trimming …")
+    logger.info("Aligning & trimming …")
     clean = align_and_trim(raw)
-    log.info("Final shape %s (first date %s)", clean.shape, clean.index[0].date())
+    logger.info("Final shape %s (first date %s)", clean.shape, clean.index[0].date())
 
-    log.info("Upserting into macro_daily (replace=True) …")
+    logger.info("Upserting into macro_daily (replace=True) …")
     upsert(clean, table="macro_daily", replace=True)
-    log.info("Done.")
+    logger.info("Done.")
 
 
 # ---------------------------------------------------------------------------
-
-
+# CLI
+# ---------------------------------------------------------------------------
 def cli() -> None:
     p = argparse.ArgumentParser(description="Update macro_daily table from FRED")
     p.add_argument("--series", nargs="*", help="Override default FRED IDs")
