@@ -57,7 +57,7 @@ valorem/
 ├── features/
 │   └── store.py                       # Upsert, load, schema‑migration, WAL SQLite store
 ├── models/
-│   └── patchtst_model.py              # PatchTST forecasting model definition 
+│   └── patchtst_model.py              # PatchTST forecasting model definition  (WIP)
 ├── pipelines/
 │   ├── update_macro.py                # FRED pipeline for macro_daily
 │   ├── update_spy_market.py           # Polygon pipeline for SPY data
@@ -66,7 +66,7 @@ valorem/
 scripts/
 │   └── setup_env.py                   # One-time setup for .env scaffolding
 tests/                                 
-│   └── test_align.py
+│   └── test_align.py                  # Unit tests for time alignment
 .env                                   # Local API keys (not tracked)
 .env.example                           # Template for .env (tracked)
 .gitignore
@@ -84,7 +84,7 @@ valorem.db                             # SQLite feature store (auto-created)
 * [x] PatchTST-compatible time alignment and flattening
 * [ ] Realized volatility and secondary feature pipelines
 * [ ] Full model training loop w/ DataLoader from SQLite
-* [ ] Optional cloud sync or DuckDB scale-out for >10M samples
+* [ ] Backtesting framework for model evaluation
 
 ---
 
