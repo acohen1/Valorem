@@ -1,0 +1,57 @@
+# ----- Python basics -----
+# Byte‑compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Unit test & coverage
+.pytest_cache/
+.coverage
+
+# Type checker, linter & formatter caches
+.mypy_cache/
+ruff_cache/
+
+# Jupyter/IPython
+.notebooks/
+
+# IDE & editor settings
+.vscode/
+.idea/
+*.code-workspace
+
+# ----- Project‑specific -----
+# Secrets / env
+.env
+.env.*
+
+# Feature‑store & logs
+# SQLite feature store (e.g., feature_store.db)
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# Data dumps & raw downloads
+/data/raw/
+/data/tmp/
+
+# Config artifacts that shouldn’t ship
+config/*.yaml
+config/*.yml
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,62 @@
+[build-system]
+requires = [
+    "setuptools>=64",
+    "wheel>=0.38"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "valorem"
+version = "0.0.1"
+description = "Deep‑learning‑driven trading system for SPY options forecasting & options positioning."
+readme = "README.md"
+authors = [
+    { name = "Alex Cohen", email = "alex@example.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.12"
+
+# Core runtime dependencies
+dependencies = [
+    "pandas>=1.5",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "torch>=2.1",
+    "pyarrow>=14.0",
+    "fredapi>=0.5",
+    "polygon-api-client>=1.11",
+    "ipywidgets>=8.0",
+    "sqlalchemy>=2.0.41"
+]
+
+[project.optional-dependencies]
+# Development / testing helpers
+# install via: pip install -e .[dev]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.4",
+    "black>=24.3",
+    "mypy>=1.8",
+    "ipykernel>=6.29",
+    "jupyterlab>=4.1"
+]
+
+[tool.setuptools]
+packages = ["valorem"]  # explicitly expose only the code package; avoids the `config/` folder
+
+[tool.setuptools.package-data]
+# Include any non‑Python files needed at runtime (e.g., SQL templates)
+# "valorem": ["data/**/*.sql", "config/*.yaml"]
+
+[tool.pytest.ini_options]
+addopts = "-raq"
+python_files = ["test_*.py", "*_test.py"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.black]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
