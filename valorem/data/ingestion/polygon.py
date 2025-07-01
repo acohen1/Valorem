@@ -11,10 +11,10 @@ Key design points
 * Reads *POLYGON_API_KEY* from `.env` (via *python-dotenv*).
 * Four public helpers:
 
-  - `fetch_aggregates`  → 1-minute OHLCV bars (Aggregates v3)  
-  - `fetch_trades`      → tick-level trade prints (Trades v3)  
-  - `fetch_quotes`      → NBBO quote ticks **(call only if plan permits)**  
-  - `fetch_option_chain_snapshot` → full option chain snapshot with greeks
+  - `fetch_aggregates`  -> 1-minute OHLCV bars (Aggregates v3)  
+  - `fetch_trades`      -> tick-level trade prints (Trades v3)  
+  - `fetch_quotes`      -> NBBO quote ticks **(call only if plan permits)**  
+  - `fetch_option_chain_snapshot` -> full option chain snapshot with greeks
 
 * Cursor-based pagination handled automatically.
 * Each helper returns a DataFrame with a UTC `DatetimeIndex` and consistent
@@ -97,11 +97,13 @@ def _paginate(
 
 
 # ---------------------------------------------------------------------------
-# 3.  Aggregates (default 1-minute OHLCV)
+# 3.  Aggregates (1-minute OHLCV) – date-range aware
 # ---------------------------------------------------------------------------
-def fetch_aggregates(
-    start: datetime,
-    end: datetime,
+from datetime import datetime, date  # <- add 'date' import at top
+
+def fetch_aggregates(                     # signature unchanged for callers
+    start: datetime | date,
+    end:   datetime | date,
     *,
     symbol: str = "SPY",
     multiplier: int = 1,
@@ -109,19 +111,33 @@ def fetch_aggregates(
     limit: int = 50_000,
 ) -> pd.DataFrame:
     """
-    Fetch OHLCV bars for `symbol` between *start* and *end* (inclusive).
+    Fetch *all* 1-minute bars for `symbol` between *start* and *end* (inclusive).
+
+    Accepts either `datetime` (with tzinfo) or `date`.  Internally we make one
+    Polygon “/range” request and follow its cursor pagination, so there is no
+    manual day-by-day loop in client code.
 
     Returns
     -------
-    pd.DataFrame indexed by UTC timestamp with columns:
-    ["open","high","low","close","volume","vwap","trades"].
+    DataFrame indexed by UTC timestamp with
+        ['open','high','low','close','volume','vwap','trades'].
     """
-    sess = _get_session()
+    # --- flexible input -----------------------------------------------------
+    if isinstance(start, date) and not isinstance(start, datetime):
+        start = datetime.combine(start, datetime.min.time()).astimezone(tz=pd.Timestamp.utcnow().tz)
+    if isinstance(end,   date) and not isinstance(end,   datetime):
+        end   = datetime.combine(end,   datetime.max.time()).astimezone(tz=pd.Timestamp.utcnow().tz)
+
+    if start.tzinfo is None or end.tzinfo is None:
+        raise ValueError("start/end must be timezone-aware (UTC preferred)")
+
     url = (
-        f"{BASE_URL}/v2/aggs/ticker/{symbol}/range/{multiplier}/{timespan}/"
-        f"{int(start.timestamp()*1000)}/{int(end.timestamp()*1000)}"
+        f"{BASE_URL}/v2/aggs/ticker/{symbol}/range/"
+        f"{multiplier}/{timespan}/{int(start.timestamp()*1000)}/{int(end.timestamp()*1000)}"
     )
-    rows = list(_paginate(sess, url, {"adjusted": "true", "sort": "asc", "limit": limit}))
+
+    sess  = _get_session()
+    rows  = list(_paginate(sess, url, {"adjusted": "true", "sort": "asc", "limit": limit}))
     if not rows:
         return pd.DataFrame()
 
@@ -130,21 +146,13 @@ def fetch_aggregates(
         .assign(timestamp=lambda d: pd.to_datetime(d["t"], unit="ms", utc=True))
         .set_index("timestamp")
         .rename(
-            columns={
-                "o": "open",
-                "h": "high",
-                "l": "low",
-                "c": "close",
-                "v": "volume",
-                "vw": "vwap",
-                "n": "trades",
-            }
+            columns={"o": "open", "h": "high", "l": "low", "c": "close",
+                     "v": "volume", "vw": "vwap", "n": "trades"}
         )
-        .drop(columns=["t"])
+        .drop(columns="t")
         .sort_index()
     )
     return df
-
 
 # ---------------------------------------------------------------------------
 # 4.  NBBO quotes (plan-dependent)
@@ -291,7 +299,7 @@ def cli() -> None:
     import argparse
     from pathlib import Path
 
-    parser = argparse.ArgumentParser(description="Download SPY Polygon data → CSV")
+    parser = argparse.ArgumentParser(description="Download SPY Polygon data -> CSV")
     parser.add_argument("endpoint", choices=["aggregates", "quotes", "trades", "chain"])
     parser.add_argument("--out", default="poly_data.csv")
     parser.add_argument("--date", help="YYYY-MM-DD for quotes/trades")
@@ -322,7 +330,7 @@ def cli() -> None:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_out.to_csv(out_path, index=True)
-    logger.info("Saved → %s (%d rows, %d cols)", out_path, *df_out.shape)
+    logger.info("Saved -> %s (%d rows, %d cols)", out_path, *df_out.shape)
 
 if __name__ == "__main__":
     cli()
