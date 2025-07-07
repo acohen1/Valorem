@@ -99,7 +99,7 @@ def handle_bars(
             logger.info("spy_bar_1m already contains %s -> %s (skip)", start, end)
             return
         start, end = min(missing), max(missing)  # shrink to the truly missing gap
-        logger.info("Only %d/%d days missing – downloading %s -> %s",
+        logger.info("Only %d/%d days missing - downloading %s -> %s",
                     len(missing), len(span_days), start, end)
 
     start_dt, _   = _market_open_close(start)

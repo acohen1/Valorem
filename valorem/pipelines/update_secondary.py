@@ -127,7 +127,7 @@ def main() -> None:
     feat_days  = _distinct_days(FEAT_TBL)
     todo_days  = sorted(bar_days - feat_days)
     if not todo_days:
-        log.info("Everything already processed – nothing to do.")
+        log.info("Everything already processed - nothing to do.")
         return
     for dstr in todo_days:
         _process_day(date.fromisoformat(dstr))

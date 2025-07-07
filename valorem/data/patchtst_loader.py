@@ -84,17 +84,31 @@ def agg_spy_chain_daily() -> pd.DataFrame:
 
 
 def daily_dataframe() -> pd.DataFrame:
-    frames = [
-        agg_spy_bar_daily(),
+    # always-present tables
+    df = agg_spy_bar_daily()
+
+    # optional joins (skip if empty)
+    for agg in (
         agg_spy_trades_daily(),
         agg_spy_chain_daily(),
         store.load("secondary_features").rename_axis("date"),
         store.load("macro_daily").rename_axis("date"),
-    ]
-    df = frames[0]
-    for f in frames[1:]:
-        df = df.join(f, how="outer")
-    return df.sort_index().ffill()   # forward-fill macro / IV gaps
+    ):
+        if not agg.empty:
+            df = df.join(agg, how="outer")
+
+    # sanitise
+    df = (df
+          .replace([np.inf, -np.inf], np.nan)
+          .sort_index()
+          .ffill()
+          .bfill())            # fills any leading gap
+
+    # drop columns that are still all-NaN (no coverage in DB)
+    df = df.dropna(axis=1, how="all")
+
+    return df
+
 
 # ─────────────────────────────────────────────────────────────
 # 2.  PatchTST Dataset
@@ -189,6 +203,7 @@ def make_dataloader(
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     dl = make_dataloader(batch_size=4)
+    dl.dataset.df.to_csv("valorem_patchtst_debug.csv", index=False)
     x, y = next(iter(dl))
     print("past:",   x.shape)  # [4, 60, D]
     print("future:", y.shape)  # [4, 5]

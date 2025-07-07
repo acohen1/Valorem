@@ -61,7 +61,7 @@ BASE_URL = "https://api.polygon.io"
 
 
 # ---------------------------------------------------------------------------
-# 1.  Session helper
+# Session helper
 # ---------------------------------------------------------------------------
 def _get_session() -> requests.Session:
     load_dotenv()
@@ -74,7 +74,7 @@ def _get_session() -> requests.Session:
 
 
 # ---------------------------------------------------------------------------
-# 2.  Cursor-pagination helper
+# Cursor-pagination helper
 # ---------------------------------------------------------------------------
 def _paginate(
     sess: requests.Session,
@@ -97,7 +97,7 @@ def _paginate(
 
 
 # ---------------------------------------------------------------------------
-# 3.  Aggregates (1-minute OHLCV) – date-range aware
+# Aggregates (1-minute OHLCV) – date-range aware
 # ---------------------------------------------------------------------------
 from datetime import datetime, date  # <- add 'date' import at top
 
@@ -155,7 +155,7 @@ def fetch_aggregates(                     # signature unchanged for callers
     return df
 
 # ---------------------------------------------------------------------------
-# 4.  NBBO quotes (plan-dependent)
+# NBBO quotes (plan-dependent)
 # ---------------------------------------------------------------------------
 def fetch_quotes(
     date: str | datetime,
@@ -193,7 +193,7 @@ def fetch_quotes(
 
 
 # ---------------------------------------------------------------------------
-# 5.  Trades (tick prints)
+# Trades (tick prints)
 # ---------------------------------------------------------------------------
 def fetch_trades(
     date: str | datetime,
@@ -218,7 +218,7 @@ def fetch_trades(
 
 
 # ---------------------------------------------------------------------------
-# 4. Option-chain snapshot (robust flatten)
+# Option-chain snapshot (robust flatten)
 # ---------------------------------------------------------------------------
 def fetch_option_chain_snapshot(
     *,
@@ -293,7 +293,7 @@ def fetch_option_chain_snapshot(
 
 
 # ---------------------------------------------------------------------------
-# 7.  CLI helper (python -m valorem.data.ingestion.polygon)
+# CLI helper (python -m valorem.data.ingestion.polygon)
 # ---------------------------------------------------------------------------
 def cli() -> None:
     import argparse
