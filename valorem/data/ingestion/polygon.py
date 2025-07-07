@@ -223,9 +223,16 @@ def fetch_trades(
 def fetch_option_chain_snapshot(
     *,
     underlying: str = "SPY",
+    expiration: str | None = None,
 ) -> pd.DataFrame:
     """
     Fetch a snapshot of all option contracts for *underlying*.
+
+    Parameters
+    ----------
+    expiration : str | None, optional
+        Expiration date ``YYYY-MM-DD``. If omitted, Polygon returns contracts
+        for the soonest available expiration.
 
     Timestamp rule (per-row)
     ------------------------
@@ -233,15 +240,18 @@ def fetch_option_chain_snapshot(
         - last_quote.last_updated      (ns)
         - last_trade.sip_timestamp     (ns)
         - underlying_asset.last_updated(ns)
+    
 
     Returns
     -------
     pd.DataFrame
         One row per contract, indexed by UTC timestamp, flat columns.
     """
-    url  = f"{BASE_URL}/v3/snapshot/options/{underlying}?limit=250"
-    resp = _get_session().get(url, timeout=60)
-    resp.raise_for_status()
+    params = {"limit": 250}
+    if expiration:
+        params["expiration_date"] = expiration
+    url  = f"{BASE_URL}/v3/snapshot/options/{underlying}"
+    resp = _get_session().get(url, params=params, timeout=60)
     results: list[dict[str, Any]] = resp.json().get("results", [])
     if not results:
         return pd.DataFrame()

@@ -21,8 +21,8 @@ python -m valorem.pipelines.update_spy_market bars   --start 2025-06-01 --end 20
 # Trades / quotes (still single-day only)
 python -m valorem.pipelines.update_spy_market trades --date 2025-06-05
 
-# Full option-chain snapshot
-python -m valorem.pipelines.update_spy_market chain
+# Option-chain snapshot for a specific expiration
+python -m valorem.pipelines.update_spy_market chain --date 2025-06-06
 """
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ def handle_bars(
 # ────────────────────────────────────────────────────────────────────────────
 def handle_trades(day: str) -> None:
     if table_has_date("spy_trades", day):
-        logger.info("spy_trades already has %s – skip", day)
+        logger.info("spy_trades already has %s - skip", day)
         return
     df = fetch_trades(day)
     if df.empty:
@@ -139,12 +139,19 @@ def handle_quotes(day: str) -> None:
     upsert(df, "spy_quotes")                    # INSERT-IGNORE
 
 
-def handle_chain() -> None:
-    df = fetch_option_chain_snapshot()
-    if df.empty:
-        logger.warning("Empty option-chain snapshot")
+def handle_chain(day: date) -> None:
+    if table_has_date("spy_chain", day):
+        logger.info("spy_chain already has %s – skip", day)
         return
-    upsert(df, "spy_chain", replace=True)        # INSERT-REPLACE
+    df = fetch_option_chain_snapshot(expiration=day.isoformat())
+
+    if df.empty:
+        logger.warning("Empty option-chain snapshot for %s", day)
+        return
+
+    df = df.assign(date=pd.to_datetime(df["expiration_date"]))
+    df = df.set_index("date")
+    upsert(df, "spy_chain", replace=True, pk=("date", "option_symbol"))        # INSERT-REPLACE
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -169,7 +176,11 @@ def cli() -> None:
         ep_p.add_argument("--date", required=True, help="YYYY-MM-DD")
 
     # ─ chain ─
-    sub.add_parser("chain", help="full option-chain snapshot")
+    chain_p = sub.add_parser("chain", help="option-chain snapshot per expiration")
+    chain_grp = chain_p.add_mutually_exclusive_group(required=True)
+    chain_grp.add_argument("--date",  help="expiration date YYYY-MM-DD")
+    chain_grp.add_argument("--start", help="span start YYYY-MM-DD")
+    chain_p.add_argument("--end",     help="span end   YYYY-MM-DD (required with --start)")
 
     args = p.parse_args()
 
@@ -193,7 +204,18 @@ def cli() -> None:
         handle_quotes(args.date)
 
     elif args.endpoint == "chain":
-        handle_chain()
+        if args.date:
+            day = date.fromisoformat(args.date)
+            handle_chain(day)
+        else:
+            if not args.end:
+                p.error("--end required when using --start")
+            start_d = date.fromisoformat(args.start)
+            end_d   = date.fromisoformat(args.end)
+            if end_d < start_d:
+                p.error("--end must be on/after --start")
+            for d in _date_range(start_d, end_d):
+                handle_chain(d)
 
 
 if __name__ == "__main__":

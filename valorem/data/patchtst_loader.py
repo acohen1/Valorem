@@ -61,8 +61,8 @@ def agg_spy_trades_daily() -> pd.DataFrame:
     return daily.join(vwap_trade).rename_axis("date")
 
 def agg_spy_chain_daily() -> pd.DataFrame:
-    chain = store.load("spy_chain").reset_index(names="ts")
-    chain["date"] = chain["ts"].dt.date
+    chain = store.load("spy_chain").reset_index(names="date")
+    chain["date"] = chain["date"].dt.date
 
     daily = (chain
         .groupby("date")

@@ -17,7 +17,7 @@ pip install sqlalchemy pandas
 from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 import json
 import numbers
@@ -83,11 +83,19 @@ def create_table_if_absent(
     table: str,
     df: pd.DataFrame,
     engine: Engine | None = None,
+    *,
+    pk: str | Sequence[str] | None = "date",
 ) -> None:
     """
     Create *table* (if missing) with columns derived from `df`.
 
-    Columns are declared REAL; you can ALTER later if you need TEXT/BLOB.
+    Parameters
+    ----------
+    pk : str | Sequence[str] | None, default "date"
+        Column name(s) used as the PRIMARY KEY. Pass ``None`` to create the
+        table without a primary key.
+
+    All columns are declared REAL; you can ALTER later if you need TEXT/BLOB.
     """
     engine = engine or get_engine()
     insp = inspect(engine)
@@ -102,8 +110,16 @@ def create_table_if_absent(
                     logger.info("Added column %s to %s", col, table)
         return                                   # now table is up-to-date
 
-    cols_sql = ["date TEXT PRIMARY KEY"] + [f"{c} REAL" for c in df.columns]
-    ddl = f"CREATE TABLE {table} ({', '.join(cols_sql)});"
+    cols_sql = ["date TEXT"] + [f"{c} REAL" for c in df.columns]
+    if pk:
+        if isinstance(pk, str):
+            pk_cols = [pk]
+        else:
+            pk_cols = list(pk)
+        pk_clause = f", PRIMARY KEY ({', '.join(pk_cols)})"
+    else:
+        pk_clause = ""
+    ddl = f"CREATE TABLE {table} ({', '.join(cols_sql)}{pk_clause});"
 
     logger.info("Creating table %s", table)
     with engine.begin() as conn:
@@ -132,6 +148,7 @@ def upsert(
     replace: bool = False,
     engine: Engine | None = None,
     chunk: int = 5_000,
+    pk: str | Sequence[str] | None = "date"
 ) -> None:
     """
     Insert `df` into `table`.
@@ -139,15 +156,18 @@ def upsert(
     Parameters
     ----------
     replace : bool, default False
-        • False -> `INSERT OR IGNORE` (keeps existing rows, ideal for immutable ticks).  
+        • False -> `INSERT OR IGNORE` (keeps existing rows, ideal for immutable ticks).
         • True  -> `INSERT OR REPLACE` (overwrite on duplicate timestamp, useful for
           revised macro series).
+    pk : str | Sequence[str] | None, default "date"
+        Column name(s) to use as the PRIMARY KEY when creating the table.
+        Use ``None`` to create the table without a primary key.
     """
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("DataFrame index must be a DatetimeIndex for upsert().")
 
     engine = engine or get_engine()
-    create_table_if_absent(table, df, engine)
+    create_table_if_absent(table, df, engine, pk=pk)
 
     sanitized = df.copy()
     for col in sanitized.columns:
