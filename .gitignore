@@ -57,3 +57,6 @@ config/*.yml
 Thumbs.db
 
 checkpoints/
+
+# CSV dumps
+*.csv

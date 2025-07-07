@@ -203,7 +203,7 @@ def make_dataloader(
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     dl = make_dataloader(batch_size=4)
-    dl.dataset.df.to_csv("valorem_patchtst_debug.csv", index=False)
+    dl.dataset.df.to_csv("valorem_patchtst_debug.csv")
     x, y = next(iter(dl))
     print("past:",   x.shape)  # [4, 60, D]
     print("future:", y.shape)  # [4, 5]
