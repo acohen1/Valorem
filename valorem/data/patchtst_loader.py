@@ -26,7 +26,7 @@ import numpy as np
 from valorem.features import store
 
 # ─────────────────────────────────────────────────────────────
-# 1.  Daily aggregations
+# Daily aggregations
 # ─────────────────────────────────────────────────────────────
 def agg_spy_bar_daily() -> pd.DataFrame:
     bar = store.load("spy_bar_1m").reset_index(names="ts")
@@ -111,7 +111,7 @@ def daily_dataframe() -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────
-# 2.  PatchTST Dataset
+# PatchTST Dataset
 # ─────────────────────────────────────────────────────────────
 class PatchTSTDataset(Dataset):
     def __init__(self, df, past_window=60, horizon=5, target_col="close"):
@@ -143,7 +143,7 @@ class PatchTSTDataset(Dataset):
                 torch.from_numpy(future))
 
 # ─────────────────────────────────────────────────────────────
-# 3.  Public factory
+# Public factory
 # ─────────────────────────────────────────────────────────────
 def make_dataloader(
     batch_size: int = 32,
@@ -203,7 +203,6 @@ def make_dataloader(
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     dl = make_dataloader(batch_size=4)
-    dl.dataset.df.to_csv("valorem_patchtst_debug.csv")
     x, y = next(iter(dl))
     print("past:",   x.shape)  # [4, 60, D]
     print("future:", y.shape)  # [4, 5]

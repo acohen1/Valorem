@@ -3,10 +3,10 @@
 export_valorem.py
 -----------------
 Dump *all* tables in valorem.db into:
-  • valorem_dump.xlsx   (one worksheet per table)
-  • valorem_master_dump.csv   (all rows stacked, plus __table__ column)
+  valorem_dump.xlsx   (one worksheet per table)
+  valorem_master_dump.csv   (all rows stacked, plus __table__ column)
 
-Requires only pandas (already in your environment).
+Requires only pandas
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pathlib
 import sys
 
 DB_PATH   = pathlib.Path("valorem.db")
-XLSX_OUT  = pathlib.Path("valorem_dump.xlsx")
+XLSX_OUT  = pathlib.Path("valorem_master_dump.xlsx")
 CSV_OUT   = pathlib.Path("valorem_master_dump.csv")
 
 def main() -> None:
