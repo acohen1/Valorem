@@ -3,8 +3,8 @@ Realised-volatility estimators.
 
 Public API
 ----------
-garman_klass(df)   → pd.Series      # needs ['open','high','low','close']
-bipower_variation(r, window=1) → pd.Series   # log-returns Series
+garman_klass(df)   -> pd.Series      # needs ['open','high','low','close']
+bipower_variation(r, window=1) -> pd.Series   # log-returns Series
 
 Both return a *variance* estimate; take **np.sqrt** if you need σ.
 """

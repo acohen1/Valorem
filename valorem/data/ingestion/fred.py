@@ -49,7 +49,7 @@ if not logger.handlers:
     logger.propagate = False
 
 # ---------------------------------------------------------------------------
-# Default macro dashboard — IDs → human-readable aliases
+# Default macro dashboard — IDs -> human-readable aliases
 # ---------------------------------------------------------------------------
 DEFAULT_SERIES: dict[str, str] = {
     "FEDFUNDS": "fed_funds_rate",
@@ -172,7 +172,7 @@ def cli() -> None:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_out.to_csv(out_path, index=True)
-    logger.info("Saved FRED data → %s (%d rows, %d cols)", out_path, *df_out.shape)
+    logger.info("Saved FRED data -> %s (%d rows, %d cols)", out_path, *df_out.shape)
 
 if __name__ == "__main__":
     logger.info("Running FRED data ingestion CLI")

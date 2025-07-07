@@ -37,7 +37,7 @@ def build_test_loader(past: int, horizon: int, batch: int, span: float) -> tuple
     """Return a DataLoader on the hold-out tail portion of the dataset."""
     df_all = daily_dataframe()
 
-    # last N rows → test
+    # last N rows -> test
     test_len = int(len(df_all) * span)
     df_test  = df_all.iloc[-test_len:]
 

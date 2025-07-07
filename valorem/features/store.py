@@ -139,8 +139,8 @@ def upsert(
     Parameters
     ----------
     replace : bool, default False
-        • False → `INSERT OR IGNORE` (keeps existing rows, ideal for immutable ticks).  
-        • True  → `INSERT OR REPLACE` (overwrite on duplicate timestamp, useful for
+        • False -> `INSERT OR IGNORE` (keeps existing rows, ideal for immutable ticks).  
+        • True  -> `INSERT OR REPLACE` (overwrite on duplicate timestamp, useful for
           revised macro series).
     """
     if not isinstance(df.index, pd.DatetimeIndex):
