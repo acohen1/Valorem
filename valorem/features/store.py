@@ -30,7 +30,6 @@ import pandas as pd
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import text
 
 __all__ = [
     "get_engine",

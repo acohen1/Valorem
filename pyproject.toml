@@ -7,11 +7,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valorem"
-version = "0.0.1"
-description = "Deep‑learning‑driven trading system for SPY options forecasting & options positioning."
+version = "0.1.0"
+description = "End-to-end forecasting pipeline for SPY options built around PatchTST."
 readme = "README.md"
 authors = [
-    { name = "Alex Cohen", email = "alex@example.com" }
+    { name = "Alex Cohen", email = "alexcohen.inbox@gmail.com" }
 ]
 license = { text = "MIT" }
 requires-python = ">=3.12"
