@@ -7,18 +7,17 @@
 ## Quick Start
 
 ```bash
-# 1. clone & enter
-$ git clone <your‑fork>
+# 1. clone (includes PatchTST submodule)
+$ git clone --recursive <your-fork>
 $ cd valorem
+# ↳ already cloned but forgot --recursive?
+# $ git submodule update --init --recursive
 
-# 2. pull the upstream PatchTST repo (subfolder)
-$ git clone https://github.com/yuqinie98/PatchTST external/PatchTST
-
-# 3. create env + install
+# 2. create env + install
 $ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 $ pip install -e .
 
-# 4. scaffold .env with API keys (Polygon, FRED)
+# 3. scaffold .env with API keys (Polygon, FRED)
 $ python scripts/setup_env.py
 ```
 ---
@@ -37,7 +36,6 @@ $ python scripts/setup_env.py
 | **Benchmarks & Volatility**  | S\&P 500 `SP500`, DJIA `DJIA`, Nasdaq `NASDAQCOM`, VIX Index `VIXCLS`                                           |
 
 ### 2. Market Structure — Polygon API
-
 * **SPY Aggregates** — 1-second and 1-minute OHLCV bars
 * **Trades** — Tick-level prints with price/size/condition codes
 * **Quotes** — Full NBBO quote feed (pending access tier)
@@ -52,11 +50,13 @@ $ python scripts/setup_env.py
 ```
 valorem/
 ├── data/
-|   ├── patchtst_loader.py             # PatchTST DataLoader
-│   └── ingestion/
-│       ├── fred.py                    # Macroeconomic data fetcher from FRED
-│       └── polygon.py                 # Market microstructure fetcher from Polygon.io
-├── evaluation/                        # Evaluation scripts for model performance
+│   ├── patchtst_loader.py             # PatchTST DataLoader
+│   ├── ingestion/
+│   |   ├── fred.py                    # Macroeconomic data fetcher from FRED
+│   |   └── polygon.py                 # Market microstructure fetcher from Polygon.io
+│   └── preprocessing/
+│       └── align.py                   # Aligns DataFrames to a shared timeline
+├── evaluation/
 │   └── eval_patchtst.py               # Evaluates PatchTST model on hold-out data
 ├── features/
 │   └── store.py                       # Upsert, load, schema‑migration, WAL SQLite store
@@ -68,16 +68,14 @@ valorem/
 │   ├── update_macro.py                # FRED pipeline for macro_daily
 │   ├── update_spy_market.py           # Polygon pipeline for SPY data
 │   └── update_secondary.py            # Secondary features pipeline (realized volatility, etc.)
-├── preprocessing/
-│   └── align.py                       # Aligns DataFrames to a shared timeline
 ├── training/
 │   └── train_patchtst.py              # Full training loop for PatchTST
-|
+│
 checkpoints/                           # Checkpoints for PatchTST model
 │   ├── patchtst_epoch001.pth
 |   └── ...
-external/
-|   └── PatchTST/                     # PatchTST source code (submodule)
+external/                             # Git submodule: contains upstream PatchTST source
+|   └── PatchTST/                     # PatchTST source code
 notebooks/
 │   └── evaluate_patchtst.ipynb       # Notebook for evaluating trained PatchTST model
 scripts/
@@ -129,13 +127,9 @@ jupyter notebook notebooks/evaluate_patchtst.ipynb
 
 ---
 
-## License
+## License & References
 
-MIT License. See `LICENSE` file for details.
+Code licensed under MIT.  PatchTST backbone © 2023 Nie et al.
+See LICENSE for full details.
 
 ---
-
-## References
-
-The model architecture is adapted from the official PatchTST implementation
-[@inproceedings{Yuqietal-2023-PatchTST, title={A Time Series is Worth 64 Words: Long-term Forecasting with Transformers}, author={Nie, Yuqi and Nguyen, Nam H. and Sinthong, Phanwadee and Kalagnanam, Jayant}, booktitle={International Conference on Learning Representations}, year={2023}}].
