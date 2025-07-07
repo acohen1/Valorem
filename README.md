@@ -74,10 +74,10 @@ valorem/
 checkpoints/                           # Checkpoints for PatchTST model
 │   ├── patchtst_epoch001.pth
 |   └── ...
-external/                             # Git submodule: contains upstream PatchTST source
-|   └── PatchTST/                     # PatchTST source code
+external/                              # Git submodule: contains upstream PatchTST source
+|   └── PatchTST/                      # PatchTST source code
 notebooks/
-│   └── evaluate_patchtst.ipynb       # Notebook for evaluating trained PatchTST model
+│   └── evaluate_patchtst.ipynb        # Notebook for evaluating trained PatchTST model
 scripts/
 │   └── setup_env.py                   # One-time setup for .env scaffolding
 tests/                                 
@@ -95,7 +95,7 @@ valorem.db                             # SQLite feature store (auto-created)
 ```bash
 # ingest macro & market data, creates valorem.db
 python -m valorem.pipelines.update_macro        --start 2020-01-01 --end 2025-06-30
-python -m valorem.pipelines.update_spy_market   --start 2024-06-01 --end 2025-06-30
+python -m valorem.pipelines.update_spy_market   --start 2024-01-01 --end 2025-06-30
 
 # compute secondary features (realized volatility, etc.)
 python -m valorem.pipelines.update_secondary    --missing
