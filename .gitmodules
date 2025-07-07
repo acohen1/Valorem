@@ -1,0 +1,3 @@
+[submodule "external/PatchTST"]
+	path = external/PatchTST
+	url = https://github.com/yuqinie98/PatchTST
