@@ -94,8 +94,15 @@ valorem.db                             # SQLite feature store (auto-created)
 ## End-to-end Workflow
 ```bash
 # ingest macro & market data, creates valorem.db
-python -m valorem.pipelines.update_macro        --start 2020-01-01 --end 2025-06-30
-python -m valorem.pipelines.update_spy_market   --start 2024-01-01 --end 2025-06-30
+python -m valorem.pipelines.update_macro           --start 2020-01-01 --end 2025-06-30
+
+python -m valorem.pipelines.update_spy_market bars --start 2024-01-01 --end 2025-06-30
+python -m valorem.pipelines.update_spy_market trades --start 2024-01-01 --end 2025-06-30
+python -m valorem.pipelines.update_spy_market chain  --start 2024-01-01 --end 2025-06-30
+
+# ingest quotes (requires Polygon Pro subscription)
+# (if you don't have access, skip this step)
+python -m valorem.pipelines.update_spy_market quotes --start 2024-01-01 --end 2025-06-30
 
 # compute secondary features (realized volatility, etc.)
 python -m valorem.pipelines.update_secondary    --missing
