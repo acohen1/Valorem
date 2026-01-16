@@ -1,0 +1,32 @@
+# Development Environment Overrides
+# These settings override config.yaml for local development
+
+training:
+  device: cpu  # Override to CPU for development
+  batch_size: 4  # Smaller batch size for faster iteration
+  max_epochs: 10  # Fewer epochs for development
+
+dataset:
+  splits:
+    # Shorter date ranges for faster testing
+    train_start: "2023-01-01"
+    train_end: "2023-03-31"
+    val_start: "2023-04-01"
+    val_end: "2023-04-30"
+    test_start: "2023-05-01"
+    test_end: "2023-05-31"
+
+backtest:
+  start_date: "2023-05-01"
+  end_date: "2023-05-31"
+  initial_capital: 10000.0  # Smaller capital for dev testing
+
+logging:
+  level: DEBUG  # Verbose logging for development
+  format: text  # Human-readable format
+
+data:
+  ingestion:
+    databento:
+      cost:
+        max_usd: 10.0  # Lower cost limit for dev

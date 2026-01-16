@@ -1,0 +1,157 @@
+# Rhubarb v2.0 - Base Configuration
+# This is the base configuration file. Environment-specific overrides are in config/environments/
+
+version: v1
+
+project:
+  name: rhubarb
+  version: "2.0.0"
+  description: "Production-grade volatility arbitrage trading system"
+
+data:
+  providers:
+    databento:
+      api_key_env: DATABENTO_API_KEY
+      dataset_equities: GLBX.MDP3
+      dataset_options: OPRA
+      stype_in: raw_symbol
+      options_schema: cbbo-1m
+    fred:
+      api_key_env: FRED_API_KEY
+      base_url: https://api.stlouisfed.org/fred
+  ingestion:
+    databento:
+      options:
+        schema: cbbo-1m
+      cost:
+        max_usd: 100.0
+
+calendar:
+  market_hours:
+    market_open: "09:30:00"
+    market_close: "16:00:00"
+    timezone: America/New_York
+
+universe:
+  underlying: SPY
+  options_type: vanilla
+
+surface:
+  delta_buckets:
+    P10: [-1.0, -0.15]
+    P25: [-0.15, -0.35]
+    P40: [-0.35, -0.45]
+    ATM: [-0.45, -0.55, 0.45, 0.55]
+    C40: [0.35, 0.45]
+    C25: [0.15, 0.35]
+    C10: [0.0, 0.15]
+  tenor_bins:
+    bins: [7, 14, 30, 60, 90, 120]
+  black_scholes:
+    method: newton-raphson
+    max_iterations: 100
+    tolerance: 1.0e-6
+    min_iv: 0.001
+    max_iv: 5.0
+
+features:
+  node:
+    include_iv: true
+    include_volume: true
+    include_open_interest: true
+    include_greeks: true
+    lookback_bars: 60
+  global:
+    include_skew: true
+    include_term_structure: true
+    include_spot_features: true
+  macro:
+    series: [DGS10, VIXCLS]
+    lookback_days: 252
+
+labels:
+  horizons: [5, 10, 21]
+  target_metric: variance_misprice
+
+dataset:
+  splits:
+    train_start: "2020-01-01"
+    train_end: "2022-12-31"
+    val_start: "2023-01-01"
+    val_end: "2023-06-30"
+    test_start: "2023-07-01"
+    test_end: "2023-12-31"
+  min_dte: 7
+  max_dte: 120
+
+model:
+  patchtst:
+    patch_len: 12
+    stride: 6
+    d_model: 128
+    n_heads: 8
+    d_ff: 256
+    n_layers: 3
+    dropout: 0.1
+  gnn:
+    model_type: GAT
+    hidden_dim: 64
+    n_layers: 2
+    heads: 4
+    dropout: 0.1
+
+training:
+  device: cuda
+  batch_size: 32
+  max_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  early_stopping_patience: 10
+  gradient_clip_val: 1.0
+  checkpoint_every_n_epochs: 5
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2023-12-31"
+  initial_capital: 100000.0
+
+execution:
+  pricing:
+    buy_at: ask
+    sell_at: bid
+  slippage:
+    model: fixed_bps
+    fixed_bps: 5.0
+
+risk:
+  caps:
+    max_portfolio_delta: 100.0
+    max_portfolio_vega: 1000.0
+    max_position_size_usd: 10000.0
+    max_total_notional_usd: 50000.0
+  stress_test_enabled: true
+
+paper:
+  broker_api_key_env: PAPER_BROKER_API_KEY
+  account_id_env: PAPER_ACCOUNT_ID
+  enabled: false
+
+harness:
+  enabled: false
+  port: 8501
+
+logging:
+  level: INFO
+  format: text
+  file_enabled: true
+  console_enabled: true
+
+paths:
+  data_dir: data
+  db_path: data/db.sqlite
+  parquet_dir: data/parquet
+  manifest_dir: data/manifest
+  artifacts_dir: artifacts
+  checkpoints_dir: artifacts/checkpoints
+  reports_dir: artifacts/reports
+  logs_dir: logs

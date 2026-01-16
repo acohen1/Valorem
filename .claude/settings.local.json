@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv run python:*)",
+      "Bash(make install-dev:*)",
+      "Bash(make coverage:*)"
+    ]
+  }
+}
