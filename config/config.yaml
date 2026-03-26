@@ -1,30 +1,34 @@
-# Rhubarb v2.0 - Base Configuration
-# This is the base configuration file. Environment-specific overrides are in config/environments/
+# Valorem - Base Configuration
+# Environment-specific overrides are in config/environments/
 
 version: v1
 
 project:
-  name: rhubarb
-  version: "2.0.0"
+  name: valorem
+  version: "0.12.0"
   description: "Production-grade volatility arbitrage trading system"
+
+# ---------------------------------------------------------------------------
+# Data & Market
+# ---------------------------------------------------------------------------
 
 data:
   providers:
     databento:
-      api_key_env: DATABENTO_API_KEY
-      dataset_equities: GLBX.MDP3
-      dataset_options: OPRA
+      dataset_equities: XNAS.ITCH
+      dataset_options: OPRA.PILLAR
       stype_in: raw_symbol
-      options_schema: cbbo-1m
-    fred:
-      api_key_env: FRED_API_KEY
-      base_url: https://api.stlouisfed.org/fred
+    fred: {}
   ingestion:
+    start_date: "2018-05-01"
+    end_date: "2021-12-31"
     databento:
       options:
-        schema: cbbo-1m
+        quote_schema: cbbo-1m
+        bar_schema: ohlcv-1d
+        statistics_schema: statistics
       cost:
-        max_usd: 100.0
+        max_usd: 300.0
 
 calendar:
   market_hours:
@@ -35,6 +39,10 @@ calendar:
 universe:
   underlying: SPY
   options_type: vanilla
+
+# ---------------------------------------------------------------------------
+# Surface
+# ---------------------------------------------------------------------------
 
 surface:
   delta_buckets:
@@ -54,6 +62,10 @@ surface:
     min_iv: 0.001
     max_iv: 5.0
 
+# ---------------------------------------------------------------------------
+# Features & Labels
+# ---------------------------------------------------------------------------
+
 features:
   node:
     include_iv: true
@@ -66,54 +78,70 @@ features:
     include_term_structure: true
     include_spot_features: true
   macro:
-    series: [DGS10, VIXCLS]
+    series: [DGS10, DGS2, VIXCLS]
     lookback_days: 252
+  masking:
+    enabled: true
+    mask_crossed: true
+    mask_wide_spread: true
 
 labels:
   horizons: [5, 10, 21]
-  target_metric: variance_misprice
 
 dataset:
   splits:
-    train_start: "2020-01-01"
-    train_end: "2022-12-31"
-    val_start: "2023-01-01"
-    val_end: "2023-06-30"
-    test_start: "2023-07-01"
-    test_end: "2023-12-31"
+    train_start: "2018-05-01"
+    train_end: "2020-06-30"
+    val_start: "2020-07-01"
+    val_end: "2021-03-31"
+    test_start: "2021-04-01"
+    test_end: "2021-12-31"
   min_dte: 7
   max_dte: 120
 
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+
 model:
   patchtst:
-    patch_len: 12
-    stride: 6
+    patch_len: 6
+    stride: 3
     d_model: 128
     n_heads: 8
     d_ff: 256
     n_layers: 3
-    dropout: 0.1
+    dropout: 0.2
   gnn:
     model_type: GAT
     hidden_dim: 64
     n_layers: 2
     heads: 4
-    dropout: 0.1
+    dropout: 0.2
 
 training:
-  device: cuda
-  batch_size: 32
+  device: auto
+  batch_size: 64
   max_epochs: 100
-  learning_rate: 0.001
-  weight_decay: 0.00001
-  early_stopping_patience: 10
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  early_stopping_patience: 15
   gradient_clip_val: 1.0
-  checkpoint_every_n_epochs: 5
+  num_workers: 4
+  use_amp: true
+
+# ---------------------------------------------------------------------------
+# Backtest
+# ---------------------------------------------------------------------------
 
 backtest:
-  start_date: "2023-07-01"
-  end_date: "2023-12-31"
+  start_date: "2021-04-01"
+  end_date: "2021-12-31"
   initial_capital: 100000.0
+
+# ---------------------------------------------------------------------------
+# Execution
+# ---------------------------------------------------------------------------
 
 execution:
   pricing:
@@ -123,25 +151,65 @@ execution:
     model: fixed_bps
     fixed_bps: 5.0
 
+# ---------------------------------------------------------------------------
+# Risk — calibrated for $100k capital
+# ---------------------------------------------------------------------------
+
 risk:
+  per_trade:
+    max_loss: 5000.0              # 5% — accommodates iron condors & skew trades
+    max_contracts: 50
   caps:
-    max_portfolio_delta: 100.0
-    max_portfolio_vega: 1000.0
-    max_position_size_usd: 10000.0
-    max_total_notional_usd: 50000.0
-  stress_test_enabled: true
+    max_abs_delta: 500.0          # ~$500 P&L per $1 underlying move
+    max_abs_gamma: 250.0          # Delta shifts $250 per $1 move
+    max_abs_vega: 10000.0         # Supports ~10-20 concurrent vol positions
+    max_daily_loss: 10000.0       # 10% daily circuit breaker
+    max_position_size_usd: 25000.0    # 25% of capital per position
+    max_total_notional_usd: 200000.0  # 2x leverage (normal for options)
+  stress:
+    enabled: true
+    underlying_shocks_pct: [-0.10, -0.05, -0.02, 0.02, 0.05, 0.10]
+    iv_shocks_points: [-10.0, -5.0, 5.0, 10.0, 20.0]
+  kill_switch:
+    halt_on_daily_loss: true
+    halt_on_stress_breach: true
+    halt_on_liquidity_collapse: true
+    max_daily_loss: 10000.0       # Matches caps.max_daily_loss
+    max_spread_pct: 0.10
+  position_management:
+    exit_signals:
+      min_edge_retention: 0.3
+      stop_loss_pct: 0.8
+      take_profit_pct: 0.5
+      min_dte_exit: 3
+    rebalancing:
+      enabled: true
+      check_interval_seconds: 60
+      strategy: close_first
+      max_trades_per_rebalance: 3
+    drift_bands:
+      delta_target: 0.0
+      delta_max_drift: 200.0      # Scaled with delta cap
+      vega_target: 0.0
+      vega_max_drift: 4000.0      # Scaled with vega cap
+      gamma_max_drift: 100.0      # Scaled with gamma cap
+
+# ---------------------------------------------------------------------------
+# Paper Trading
+# ---------------------------------------------------------------------------
 
 paper:
   broker_api_key_env: PAPER_BROKER_API_KEY
   account_id_env: PAPER_ACCOUNT_ID
   enabled: false
 
-harness:
-  enabled: false
-  port: 8501
+
+# ---------------------------------------------------------------------------
+# Infrastructure
+# ---------------------------------------------------------------------------
 
 logging:
-  level: INFO
+  level: DEBUG
   format: text
   file_enabled: true
   console_enabled: true
@@ -154,4 +222,4 @@ paths:
   artifacts_dir: artifacts
   checkpoints_dir: artifacts/checkpoints
   reports_dir: artifacts/reports
-  logs_dir: logs
+  logs_dir: artifacts/logs

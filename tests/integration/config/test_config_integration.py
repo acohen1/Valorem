@@ -33,13 +33,13 @@ class TestConfigurationIntegration:
 
         # Verify config loaded successfully
         assert config.version == "v1"
-        assert config.project.name == "rhubarb"
+        assert config.project.name == "valorem"
         assert config.universe.underlying == "SPY"
 
         # Verify dev overrides applied
-        assert config.training.device == "cpu"  # Overridden from dev.yaml
-        assert config.training.batch_size == 4  # Overridden from dev.yaml
-        assert config.logging.level == "DEBUG"  # Overridden from dev.yaml
+        assert config.training.device != "cuda"  # Overridden from dev.yaml
+        assert config.training.batch_size == 4   # Overridden from dev.yaml
+        assert config.logging.level == "DEBUG"   # From base config
 
     def test_path_resolution_with_real_config(self):
         """Test path resolution with actual configuration."""
@@ -75,12 +75,12 @@ class TestConfigurationIntegration:
         # Load with dev environment
         dev_config = ConfigLoader.load(config_path, env="dev")
 
-        # Base config should use defaults
-        assert base_config.training.device == "cuda"
-        assert base_config.training.batch_size == 32
+        # Base config should use production-tuned defaults
+        assert base_config.training.device == "auto"
+        assert base_config.training.batch_size == 64
 
         # Dev config should have overrides
-        assert dev_config.training.device == "cpu"
+        assert dev_config.training.device == "mps"
         assert dev_config.training.batch_size == 4
 
         # Non-overridden values should be same
@@ -114,11 +114,11 @@ class TestConfigurationIntegration:
         assert data_dir.is_dir()
 
         # 6. Check model config
-        assert config.model.patchtst.patch_len == 12
+        assert config.model.patchtst.patch_len == 6
         assert config.model.gnn.model_type == "GAT"
 
         # 7. Check risk caps
-        assert config.risk.caps.max_portfolio_delta > 0
+        assert config.risk.caps.max_abs_delta > 0
         assert config.risk.caps.max_total_notional_usd > 0
 
     def test_get_environment_config_path(self):

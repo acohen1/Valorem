@@ -74,7 +74,7 @@ class TestConfigLoader:
         assert config.version == "v1"
         assert config.dataset.splits.train_start == date(2020, 1, 1)
         # Defaults should be set
-        assert config.training.device == "cuda"
+        assert config.training.device == "auto"
         assert config.training.batch_size == 32
 
     def test_load_with_environment_overlay(self, temp_config_with_env):

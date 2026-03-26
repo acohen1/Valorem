@@ -23,27 +23,27 @@ class TestGetEnvironment:
             assert env == Environment.DEV
 
     def test_get_environment_from_env_var(self):
-        """Test getting environment from RHUBARB_ENV."""
-        with patch.dict("os.environ", {"RHUBARB_ENV": "backtest"}):
+        """Test getting environment from VALOREM_ENV."""
+        with patch.dict("os.environ", {"VALOREM_ENV": "backtest"}):
             env = get_environment()
             assert env == Environment.BACKTEST
 
     def test_get_environment_case_insensitive(self):
         """Test that environment variable is case insensitive."""
-        with patch.dict("os.environ", {"RHUBARB_ENV": "PAPER"}):
+        with patch.dict("os.environ", {"VALOREM_ENV": "PAPER"}):
             env = get_environment()
             assert env == Environment.PAPER
 
     def test_get_environment_invalid_value(self):
         """Test that invalid environment defaults to DEV."""
-        with patch.dict("os.environ", {"RHUBARB_ENV": "invalid"}):
+        with patch.dict("os.environ", {"VALOREM_ENV": "invalid"}):
             env = get_environment()
             assert env == Environment.DEV
 
     def test_get_environment_all_valid_values(self):
         """Test all valid environment values."""
         for env_type in Environment:
-            with patch.dict("os.environ", {"RHUBARB_ENV": env_type.value}):
+            with patch.dict("os.environ", {"VALOREM_ENV": env_type.value}):
                 env = get_environment()
                 assert env == env_type
 
@@ -76,7 +76,7 @@ class TestGetEnvConfigPath:
         backtest_config = env_dir / "backtest.yaml"
         backtest_config.write_text("test: true")
 
-        with patch.dict("os.environ", {"RHUBARB_ENV": "backtest"}):
+        with patch.dict("os.environ", {"VALOREM_ENV": "backtest"}):
             result = get_env_config_path(tmp_path, env=None)
             assert result == backtest_config
 

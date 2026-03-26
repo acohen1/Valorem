@@ -31,7 +31,7 @@ class ConfigLoader:
 
         Args:
             config_path: Path to base config.yaml file
-            env: Environment name (dev, backtest, paper, live)
+            env: Environment overlay name (matches config/environments/{env}.yaml)
 
         Returns:
             Validated ConfigSchema instance
@@ -134,10 +134,10 @@ class ConfigLoader:
             )
 
         # Validate risk caps are positive (already enforced by Pydantic gt=0, but good practice)
-        if config.risk.caps.max_portfolio_delta <= 0:
-            raise ValueError("risk.caps.max_portfolio_delta must be positive")
-        if config.risk.caps.max_portfolio_vega <= 0:
-            raise ValueError("risk.caps.max_portfolio_vega must be positive")
+        if config.risk.caps.max_abs_delta <= 0:
+            raise ValueError("risk.caps.max_abs_delta must be positive")
+        if config.risk.caps.max_abs_vega <= 0:
+            raise ValueError("risk.caps.max_abs_vega must be positive")
         if config.risk.caps.max_position_size_usd <= 0:
             raise ValueError("risk.caps.max_position_size_usd must be positive")
         if config.risk.caps.max_total_notional_usd <= 0:

@@ -21,14 +21,14 @@ class Environment(str, Enum):
 
 
 def get_environment() -> Environment:
-    """Get current environment from RHUBARB_ENV environment variable.
+    """Get current environment from VALOREM_ENV environment variable.
 
     Returns:
         Environment enum value (defaults to DEV)
     """
     import os
 
-    env_str = os.getenv("RHUBARB_ENV", "dev").lower()
+    env_str = os.getenv("VALOREM_ENV", "dev").lower()
 
     try:
         env = Environment(env_str)

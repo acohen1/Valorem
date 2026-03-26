@@ -1,9 +1,9 @@
-.PHONY: help install install-dev test test-unit test-integration test-system coverage \
-        lint format typecheck clean clean-data \
-        ingest surface features train backtest paper
+.PHONY: help install install-dev test test-unit test-integration coverage \
+        lint format typecheck clean clean-data reset \
+        ingest features train backtest paper db-list db-clear
 
 help:
-	@echo "Rhubarb v2.0 - Development Commands"
+	@echo "Valorem - Development Commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make install        Install dependencies with uv"
@@ -13,25 +13,29 @@ help:
 	@echo "  make test           Run all tests"
 	@echo "  make test-unit      Run unit tests only"
 	@echo "  make test-integration Run integration tests only"
-	@echo "  make test-system    Run system tests only"
 	@echo "  make coverage       Run tests with coverage report"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  make lint           Run ruff linter"
-	@echo "  make format         Format code with black + ruff"
+	@echo "  make format         Format code with ruff"
 	@echo "  make typecheck      Run mypy type checker"
 	@echo ""
 	@echo "Data pipeline:"
-	@echo "  make ingest         Ingest raw data from Databento"
-	@echo "  make surface        Build surface snapshots"
-	@echo "  make features       Build feature dataset"
-	@echo "  make train          Train ML model"
-	@echo "  make backtest       Run backtest"
+	@echo "  make ingest         Run ingest_raw.py (requires --start-date, --end-date)"
+	@echo "  make features       Run build_features.py (requires --start-date, --end-date, --surface-version, --feature-version)"
+	@echo "  make train          Train model (default: ensemble)"
+	@echo "  make train-synthetic  Quick smoke test with synthetic data"
+	@echo "  make backtest       Run backtest (requires --start-date, --end-date, --checkpoint)"
 	@echo "  make paper          Run paper trading"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-list        List all tables with row counts"
+	@echo "  make db-clear       Clear derived tables (surfaces + node_panel)"
 	@echo ""
 	@echo "Cleaning:"
 	@echo "  make clean          Remove build artifacts and cache"
 	@echo "  make clean-data     Remove data/ directory"
+	@echo "  make reset          Remove ALL generated state (data + artifacts + cache)"
 
 # Installation
 install:
@@ -50,9 +54,6 @@ test-unit:
 test-integration:
 	uv run pytest tests/integration/ -v
 
-test-system:
-	uv run pytest tests/system/ -v
-
 coverage:
 	uv run pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
 
@@ -61,30 +62,37 @@ lint:
 	uv run ruff check src/ tests/ scripts/
 
 format:
-	uv run black src/ tests/ scripts/
+	uv run ruff format src/ tests/ scripts/
 	uv run ruff check --fix src/ tests/ scripts/
 
 typecheck:
 	uv run mypy src/
 
-# Data pipeline
+# Data pipeline (pass additional args via ARGS, e.g. make ingest ARGS="--start-date 2024-01-01 --end-date 2024-02-01")
 ingest:
-	uv run python scripts/ingest_raw.py
-
-surface:
-	uv run python scripts/build_surface.py
+	uv run python scripts/ingest_raw.py $(ARGS)
 
 features:
-	uv run python scripts/build_features.py
+	uv run python scripts/build_features.py $(ARGS)
 
 train:
-	uv run python scripts/train_model.py
+	uv run python scripts/train_model.py $(ARGS)
+
+train-synthetic:
+	uv run python scripts/train_model.py --synthetic
 
 backtest:
-	uv run python scripts/run_backtest.py
+	uv run python scripts/run_backtest.py $(ARGS)
 
 paper:
-	uv run python scripts/run_paper_trading.py
+	uv run python scripts/run_paper_trading.py $(ARGS)
+
+# Database management
+db-list:
+	uv run python scripts/manage_data.py list
+
+db-clear:
+	uv run python scripts/manage_data.py clear --derived --yes
 
 # Cleaning
 clean:
@@ -97,4 +105,15 @@ clean:
 
 clean-data:
 	rm -rf data/
-	mkdir -p data/{parquet,manifest}
+
+reset:
+	@echo "This will delete ALL generated state:"
+	@echo "  - data/          (database, manifests)"
+	@echo "  - artifacts/     (model checkpoints, logs, backtest reports)"
+	@echo "  - caches         (__pycache__, .pytest_cache, .mypy_cache, etc.)"
+	@echo ""
+	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || { echo "Aborted."; exit 1; }
+	$(MAKE) clean
+	$(MAKE) clean-data
+	rm -rf artifacts/
+	@echo "Reset complete."

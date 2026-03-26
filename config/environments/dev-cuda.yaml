@@ -1,0 +1,23 @@
+# CUDA Development Environment Overrides
+# Production-tuned model with GPU acceleration on a discrete NVIDIA card.
+# Only overrides what differs from config.yaml.
+# Data ingestion settings and dataset splits live in the base config.
+
+# --- Model (production-tuned for low-SNR vol arb) ---
+model:
+  patchtst:
+    dropout: 0.2                   # Base: 0.1 — heavier reg for small dataset
+  gnn:
+    dropout: 0.2                   # Base: 0.1
+
+# --- Training (tuned for discrete NVIDIA GPU) ---
+training:
+  device: cuda
+  batch_size: 64                   # Base: 32 — stable gradients across 42 nodes
+  max_epochs: 50                   # Base: 100 — keep dev iteration fast
+  learning_rate: 0.0005            # Base: 0.001 — lower for stable convergence
+  weight_decay: 0.0001             # Base: 0.00001 — stronger L2 vs memorisation
+  early_stopping_patience: 15      # Base: 10 — room for cosine schedule
+  num_workers: 4                   # Base: 4 — parallel CPU prefetch
+  use_amp: true                    # Tensor Core FP16 acceleration
+

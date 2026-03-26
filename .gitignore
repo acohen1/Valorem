@@ -30,6 +30,7 @@ env/
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
 .hypothesis/
@@ -44,6 +45,7 @@ dmypy.json
 
 # IDEs
 .vscode/
+.claude/
 .idea/
 *.swp
 *.swo
@@ -56,24 +58,28 @@ dmypy.json
 .env.*.local
 
 # Data artifacts (DO NOT COMMIT)
-data/
+/data/
 artifacts/checkpoints/
 artifacts/reports/
+artifacts/results/
 
 # Logs
 *.log
 logs/
+artifacts/logs/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
-# Model checkpoints
+# Model checkpoints and training results
 *.pt
 *.pth
 *.ckpt
+*.pkl
 
 # Temporary files
 tmp/
 temp/
 *.tmp
+
+CLAUDE.md

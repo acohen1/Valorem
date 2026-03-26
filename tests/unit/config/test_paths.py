@@ -39,7 +39,7 @@ class TestPathResolver:
         assert resolver.resolve("data_dir") == temp_root / "data"
         assert resolver.resolve("parquet_dir") == temp_root / "data" / "parquet"
         assert resolver.resolve("checkpoints_dir") == temp_root / "artifacts" / "checkpoints"
-        assert resolver.resolve("logs_dir") == temp_root / "logs"
+        assert resolver.resolve("logs_dir") == temp_root / "artifacts" / "logs"
 
     def test_resolve_invalid_key_raises_error(self, temp_root, paths_config):
         """Test that resolving invalid key raises KeyError."""
