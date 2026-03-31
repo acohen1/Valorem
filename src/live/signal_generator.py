@@ -376,7 +376,7 @@ class ModelSignalGenerator(SignalGeneratorBase):
             )
 
         # Run inference
-        with torch.no_grad():
+        with torch.inference_mode():
             # Model returns (batch, nodes, horizons) or (batch, nodes)
             if self._model_has_internal_edges:
                 output = self._model(X_tensor, mask=mask_tensor)

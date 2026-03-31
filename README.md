@@ -19,6 +19,7 @@ A modular, scalable system for predicting and exploiting volatility mispricing i
 - [Development](#development)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
+- [Deployment](#deployment)
 - [Documentation](#documentation)
 - [References](#references)
 
@@ -150,25 +151,39 @@ Pooled IC (Pearson/Spearman across all sample-node pairs) is deliberately exclud
 
 ## Installation
 
-### Prerequisites
+### Option A: Local (uv)
 
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) package manager
-
-### Setup
+**Prerequisites:** Python 3.11+, [uv](https://github.com/astral-sh/uv)
 
 ```bash
-# Clone repository
 git clone <repository-url>
 cd Valorem
 
-# Copy environment template
 cp .env.example .env
 # Edit .env with your API keys (see Environment Variables below)
 
-# Install dependencies
 make install-dev
 ```
+
+### Option B: Docker
+
+**Prerequisites:** Docker, [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU training)
+
+```bash
+git clone <repository-url>
+cd Valorem
+
+cp .env.example .env
+# Edit .env with your API keys
+
+# Build and run (smoke test with synthetic data)
+make docker-up
+
+# Run any script inside the container
+make docker-run ARGS="python scripts/train_model.py --ablation patchtst --batch-size 256"
+```
+
+The container bind-mounts `data/`, `artifacts/`, and `src/` from your host filesystem — all reads and writes go directly to your local disk. See [Deployment](#deployment) for remote host setup.
 
 ### Environment Variables
 
@@ -828,7 +843,7 @@ version: v1
 
 project:
   name: valorem
-  version: "2.0.0"
+  version: "0.12.1"
 
 universe:
   underlying: SPY
@@ -1113,9 +1128,84 @@ Valorem/
 │   └── logs/                   # Per-workflow log files
 ├── checkpoints/                # Model checkpoints
 ├── Makefile                    # Development commands
+├── Dockerfile                  # Container image definition
+├── docker-compose.yml          # Container orchestration with GPU + volumes
+├── .dockerignore               # Docker build exclusions
 ├── pyproject.toml              # Project configuration
 └── .env.example                # Environment template
 ```
+
+---
+
+## Deployment
+
+### How Docker Volumes Work
+
+The `docker-compose.yml` bind-mounts three directories from the host into the container:
+
+```yaml
+volumes:
+  - ./data:/app/data        # SQLite DB, manifests, parquet
+  - ./artifacts:/app/artifacts  # Checkpoints, logs, reports
+  - ./src:/app/src           # Source code (live reload for dev)
+```
+
+These are pass-throughs, not copies. The container reads and writes directly to your host filesystem. Nothing is duplicated or stored inside the container image.
+
+### Deploying to a Remote Host
+
+For running training on a cloud GPU or a home server, sync your data to the remote machine and run Docker there.
+
+**1. Initial setup on the remote host:**
+
+```bash
+# Clone repo and configure environment
+git clone <repository-url>
+cd Valorem
+cp .env.example .env
+# Edit .env with API keys
+
+# Create data directories
+mkdir -p data artifacts
+```
+
+**2. Sync data from your development machine:**
+
+```bash
+# From your local machine — sync the SQLite DB and any existing artifacts
+rsync -avP ./data/ remote-host:~/Valorem/data/
+```
+
+**3. Run training on the remote host:**
+
+```bash
+# Build and train
+make docker-run ARGS="python scripts/train_model.py --ablation patchtst --batch-size 256"
+
+# Or run the full pipeline
+make docker-up
+```
+
+**4. Pull results back:**
+
+```bash
+# From your local machine — pull checkpoints and reports
+rsync -avP remote-host:~/Valorem/artifacts/ ./artifacts/
+```
+
+### Keeping Data in Sync
+
+For daily data updates (ingestion on one machine, training on another):
+
+```bash
+# On the data collection machine (e.g., home server running 24/7)
+make docker-run ARGS="python scripts/ingest_raw.py --start-date 2024-01-01 --end-date 2024-01-31"
+
+# Sync updated DB to the training machine
+rsync -avP ./data/db.sqlite training-host:~/Valorem/data/
+```
+
+The SQLite database is a single file (`data/db.sqlite`), so syncing is straightforward. For large DBs (>20GB), use `rsync --compress` or sync only the delta with `rsync --inplace`.
 
 ---
 

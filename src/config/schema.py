@@ -409,6 +409,9 @@ class TrainingConfig(BaseModel):
     use_amp: bool = Field(
         default=True, description="Enable automatic mixed precision (CUDA only)"
     )
+    lookback_days: int = Field(
+        default=63, gt=0, description="Number of historical timestamps per sample"
+    )
 
 
 # ============================================================================

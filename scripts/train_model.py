@@ -465,7 +465,7 @@ def _load_real_data(
         labels=LabelsConfig(horizons_days=config.labels.horizons),
         batch_size=batch_size,
         feature_cols=feature_cols,
-        lookback_days=63,
+        lookback_days=config.training.lookback_days,
     )
 
     # Load data

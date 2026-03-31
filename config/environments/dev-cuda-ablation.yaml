@@ -1,0 +1,23 @@
+# Ablation Study Environment
+# Shared config for all ablation variants (patchtst, gnn, ensemble).
+# Only the --ablation flag changes between runs.
+
+model:
+  patchtst:
+    d_model: 64                      # Base: 128 — halved to reduce overfitting
+    d_ff: 128                        # Base: 256 — scale with d_model
+    n_layers: 1                      # Base: 3 — single layer to combat overfitting
+    dropout: 0.3
+  gnn:
+    dropout: 0.3
+
+training:
+  device: cuda
+  batch_size: 256
+  max_epochs: 50
+  learning_rate: 0.0002
+  weight_decay: 0.001
+  early_stopping_patience: 15
+  num_workers: 4
+  use_amp: true
+  lookback_days: 30                  # Base: 63 — reduced to combat overfitting

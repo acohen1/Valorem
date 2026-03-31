@@ -150,8 +150,10 @@ class Trainer:
         self._device = self._get_device(config.device)
         logger.info(f"Using device: {self._device}")
 
-        # Move model to device
+        # Move model to device and compile for kernel fusion
         self._model = self._model.to(self._device)
+        if self._device.type == "cuda":
+            self._model = torch.compile(self._model)
 
         # Check if model manages edge structure internally
         self._model_manages_edges = (
@@ -556,7 +558,7 @@ class Trainer:
         all_masks: list[torch.Tensor] = []
         all_label_masks: list[torch.Tensor] = []
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for batch in loader:
                 # Move batch to device (non_blocking overlaps transfer with compute)
                 X = batch["X"].to(self._device, non_blocking=True)

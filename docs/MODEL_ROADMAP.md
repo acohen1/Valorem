@@ -262,7 +262,12 @@ M1 (ablation) ✅ -> M2 (batched GNN) ✅ -> M3 (learnable edges) ✅ -> M3b (vo
     -> M4 (regime-stratified eval)
       -> M5 (RevIN)
         -> M6 (interleaved, if regime results warrant)
+          -> M7 (Optuna hyperparameter optimization on selected architecture)
 ```
+
+**M7**: Once the production architecture is selected via ablations, run Optuna hyperparameter
+optimization (LR, dropout, d_model, n_layers, batch size, scheduler params). Not appropriate
+during ablations — tuning one variant more than another confounds architecture comparison.
 
 **Current gate**: Full-period data ingestion. The dev window (2018–2019) is a calm,
 surface-dominant regime that cannot distinguish architectures or demonstrate volume

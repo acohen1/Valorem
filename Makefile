@@ -1,6 +1,7 @@
 .PHONY: help install install-dev test test-unit test-integration coverage \
         lint format typecheck clean clean-data reset \
-        ingest features train backtest paper db-list db-clear
+        ingest features train backtest paper db-list db-clear \
+        docker-build docker-up docker-down docker-run
 
 help:
 	@echo "Valorem - Development Commands"
@@ -31,6 +32,12 @@ help:
 	@echo "Database:"
 	@echo "  make db-list        List all tables with row counts"
 	@echo "  make db-clear       Clear derived tables (surfaces + node_panel)"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build   Build Docker image"
+	@echo "  make docker-up      Start container with GPU"
+	@echo "  make docker-down    Stop container"
+	@echo "  make docker-run     Run a command in container (e.g. make docker-run ARGS='python scripts/train_model.py')"
 	@echo ""
 	@echo "Cleaning:"
 	@echo "  make clean          Remove build artifacts and cache"
@@ -93,6 +100,19 @@ db-list:
 
 db-clear:
 	uv run python scripts/manage_data.py clear --derived --yes
+
+# Docker
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up --build
+
+docker-down:
+	docker compose down
+
+docker-run:
+	docker compose run --rm valorem uv run $(ARGS)
 
 # Cleaning
 clean:

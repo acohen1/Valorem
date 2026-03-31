@@ -70,6 +70,7 @@ artifacts/logs/
 
 # Jupyter
 .ipynb_checkpoints/
+notebooks/
 
 # Model checkpoints and training results
 *.pt

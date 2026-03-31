@@ -4,6 +4,22 @@ All notable changes to Valorem are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+---
+
+## [0.12.1] - 2026-03-30
+
+### Added
+- Docker support: Dockerfile, docker-compose.yml with GPU passthrough, and Makefile targets (`docker-build`, `docker-up`, `docker-down`, `docker-run`).
+- README deployment guide for remote host setup via rsync + Docker.
+- `training.lookback_days` configurable via yaml
+
+### Changed
+- `torch.compile()` applied to model on CUDA devices for kernel fusion.
+- `torch.no_grad()` replaced with `torch.inference_mode()` across trainer, backtest, and live inference paths.
+- Notebooks temporarily untracked pending updates for current feature set, metrics, and label pipeline.
+
+---
+
 ## [0.12.0] - 2026-03-25
 
 ### Changed
@@ -24,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SQLite datetime adapter normalizes to UTC on write, preventing `merge_asof` failures from timezone mismatches.
 - Lookback diagnostic in `TrainingDataPipeline` counted total rows per day instead of unique timestamps, producing a spurious warning about sub-day lookback coverage.
 
+---
+
 ## [0.11.1] - 2026-03-12
 
 ### Fixed
@@ -31,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Demoted noisy internal logs to debug level.
+
+---
 
 ## [0.11.0] - 2026-03-11
 
@@ -44,11 +64,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - DGS2 (2-year Treasury rate) added to default FRED series.
 - Bounded monitoring history and state snapshot retention limits.
 
+---
+
 ## [0.10.1] - 2026-03-06
 
 ### Fixed
 - `min_periods` floor capped to not exceed window size.
 - 7 test failures from changed runtime behavior (shift, lookback, checkpoint naming).
+
+---
 
 ## [0.10.0] - 2026-03-04
 
@@ -66,6 +90,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Synthetic/dry-run batch contract emits `label_mask` correctly.
 - Backtest keeps latest intraday surface snapshot per date.
 - Live/mock feature tenor grid aligned with model graph defaults.
+
+---
 
 ## [0.9.0] - 2026-03-02
 
@@ -85,6 +111,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Numerical robustness: epsilon guards replaced with `np.maximum` to prevent sign-flip bugs.
 - Dead config fields and 9 unused microstructure features removed.
 
+---
+
 ## [0.8.0] - 2026-02-07
 
 ### Changed
@@ -101,6 +129,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - OOM crash during multi-month ingestion — chunks now written to DB immediately.
 - Interactive cost confirmation prompt added before expensive Databento API calls.
 
+---
+
 ## [0.7.0] - 2026-02-06
 
 ### Added
@@ -111,12 +141,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Manifest cost estimates updated from actual production data.
 
+---
+
 ## [0.6.0] - 2026-02-03
 
 ### Added
 - **M1 ablation studies:** Three model variants via `--ablation` flag — `patchtst`, `gnn`, `ensemble`. Initial results: ensemble Rank IC 0.513, PatchTST 0.503, GNN 0.490.
 - Ablation analysis notebook with publication-quality visualizations.
 - GNN standalone prediction mode.
+
+---
 
 ## [0.5.0] - 2026-02-02
 
@@ -133,6 +167,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CUDA dev environment overlay.
 - Config cascade: CLI arg → YAML config → schema default.
 
+---
+
 ## [0.4.0] - 2026-02-01
 
 ### Added
@@ -143,6 +179,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Risk checker max_loss bug inflating credit spread max loss from ~$500 to ~$88k, causing false trade rejections.
 - P10 delta bucket config fixed to capture actual 10-delta OTM puts.
 - Calendar spread nearest-strike matching fixed.
+
+---
 
 ## [0.3.0] - 2026-01-30
 
@@ -157,6 +195,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 15 runtime bugs across the full workflow stack (OCC encoding, lazy imports, crash recovery, schema compatibility).
 - Dead code removed, stale test references fixed, protocols relocated to implementation modules.
 
+---
+
 ## [0.2.0] - 2026-01-26
 
 ### Changed
@@ -169,6 +209,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Centralized Greeks/DTE calculation utilities.
 - Centralized constants module (eliminates 40+ magic values).
 - Phase 2 paper trading: feature provider, symbol discovery, environment config, E2E tests.
+
+---
 
 ## [0.1.0] - 2026-01-25
 

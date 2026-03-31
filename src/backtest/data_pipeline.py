@@ -538,7 +538,7 @@ class BacktestDataPipeline:
         latest_by_date: dict[date, tuple[pd.Timestamp, dict[tuple[int, str], float]]] = {}
         sample_offset = 0
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for batch in loader:
                 X = batch["X"].to(device)
                 mask = batch["mask"].to(device)
